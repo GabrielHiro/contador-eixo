@@ -10,5 +10,11 @@ compile_commands.json
 .cache/
 *.tgz
 *.tar.gz
-# Binários do ORT (re-baixar conforme README / releases)
+# Binários do ORT (re-baixar via scripts/fetch_onnxruntime.sh)
 /third_party/onnxruntime/
+# Auto-label YOLO-World
+/dataset_yoloworld/
+*.pt
+__pycache__/
+.venv/
+venv/
