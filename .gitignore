@@ -1,0 +1,14 @@
+/build/
+/cmake-build-*/
+/.vscode/
+/.idea/
+*.o
+*.a
+*.so
+*.out
+compile_commands.json
+.cache/
+*.tgz
+*.tar.gz
+# Binários do ORT (re-baixar conforme README / releases)
+/third_party/onnxruntime/

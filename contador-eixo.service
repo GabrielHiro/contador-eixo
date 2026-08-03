@@ -1,0 +1,49 @@
+[Unit]
+Description=Contador de Eixos — visão computacional na borda
+Documentation=file:///opt/contador-eixo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Diretório de instalação na placa Armbian
+WorkingDirectory=/opt/contador-eixo
+
+# Ajuste as flags abaixo para o poste (RTSP, modelo, linha virtual).
+# Exporte LD_LIBRARY_PATH se o ORT não estiver no rpath do binário.
+Environment=LD_LIBRARY_PATH=/opt/contador-eixo/lib
+Environment=OMP_NUM_THREADS=2
+
+ExecStart=/opt/contador-eixo/bin/contador_eixo \
+    --source rtsp://USER:PASS@CAMERA_IP:554/stream1 \
+    --model /opt/contador-eixo/models/wheels.onnx \
+    --line 180,160,1100,620 \
+    --port 8080 \
+    --threads 2 \
+    --conf 0.45 \
+    --nms 0.45 \
+    --reconnect-ms 5000 \
+    --read-timeout-ms 5000
+
+# Reinicia se o processo cair (segfault, OOM kill, etc.)
+Restart=always
+RestartSec=5
+
+# Limites razoáveis para SBC
+Nice=5
+# LimitNOFILE=4096
+
+# Logs vão para o journald → journalctl -u contador-eixo -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=contador-eixo
+
+# Encerramento limpo: SIGTERM → g_running=false → sai do reconnect sleep
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
