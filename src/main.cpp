@@ -1,7 +1,7 @@
 #include "contador/detector.hpp"
-#include "contador/logger.hpp"
 #include "contador/stream_server.hpp"
 #include "contador/tracker_counter.hpp"
+#include "contador/utils.hpp"
 #include "contador/video_source.hpp"
 
 #include <opencv2/imgproc.hpp>

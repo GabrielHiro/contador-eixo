@@ -1,11 +1,12 @@
 #include "contador/video_source.hpp"
-#include "contador/logger.hpp"
+#include "contador/utils.hpp"
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 
+#include <algorithm>
 #include <cctype>
-#include <thread>
+#include <utility>
 
 namespace contador {
 namespace {
@@ -40,10 +41,15 @@ bool CvVideoSource::detectLiveUri(const std::string& uri) {
 }
 
 CvVideoSource::CvVideoSource(std::string uri, VideoSourceOptions options)
-    : uri_(std::move(uri)), options_(options), live_(detectLiveUri(uri_)) {}
+    : uri_(std::move(uri)), options_(std::move(options)), live_(detectLiveUri(uri_)) {}
+
+CvVideoSource::~CvVideoSource() {
+    release();
+}
 
 void CvVideoSource::requestStop() {
     stop_.store(true, std::memory_order_relaxed);
+    frame_cv_.notify_all();
 }
 
 void CvVideoSource::bindRunningFlag(std::atomic<bool>* running) {
@@ -64,8 +70,9 @@ void CvVideoSource::hardRelease() {
     if (cap_.isOpened()) {
         cap_.release();
     }
-    // Garante destruição completa do handle FFmpeg/GStreamer
+    // Destrói o handle FFmpeg/GStreamer por completo (evita leak em reconnect)
     cap_ = cv::VideoCapture();
+    connected_.store(false, std::memory_order_relaxed);
 }
 
 bool CvVideoSource::waitReconnectDelay() {
@@ -99,7 +106,6 @@ bool CvVideoSource::tryOpenOnce() {
             cap_.set(cv::CAP_PROP_BUFFERSIZE, 1);
         };
 
-        // Somente backends de stream — evita CAP_IMAGES spit errors em RTSP
         applyTimeouts();
         ok = cap_.open(uri_, cv::CAP_FFMPEG);
         if (!ok || !cap_.isOpened()) {
@@ -137,12 +143,86 @@ bool CvVideoSource::tryOpenOnce() {
     const int h = static_cast<int>(cap_.get(cv::CAP_PROP_FRAME_HEIGHT));
     LogInfo("VideoSource") << "Aberto: " << uri_ << " " << w << "x" << h << " @ " << fps_
                            << " FPS"
-                           << (live_ ? " [live/reconnect]" : " [file]");
+                           << (live_ ? " [live/grabber]" : " [file]");
+    connected_.store(true, std::memory_order_relaxed);
     return true;
+}
+
+void CvVideoSource::startGrabber() {
+    if (grabber_.joinable()) {
+        return;
+    }
+    grabber_ = std::thread(&CvVideoSource::grabberLoop, this);
+}
+
+void CvVideoSource::stopGrabber() {
+    requestStop();
+    if (grabber_.joinable()) {
+        grabber_.join();
+    }
+}
+
+void CvVideoSource::grabberLoop() {
+    int empty_streak = 0;
+    const int max_empty = std::max(1, options_.max_empty_frames);
+
+    LogInfo("VideoSource") << "Grabber iniciado (reconnect="
+                           << options_.reconnect_delay.count() << " ms, max_empty="
+                           << max_empty << ")";
+
+    while (!shouldStop()) {
+        if (!cap_.isOpened()) {
+            connected_.store(false, std::memory_order_relaxed);
+            if (!tryOpenOnce()) {
+                LogWarn("VideoSource") << "Falha ao abrir — retry em "
+                                       << options_.reconnect_delay.count() << " ms: " << uri_;
+                if (!waitReconnectDelay()) {
+                    break;
+                }
+                continue;
+            }
+            if (reconnect_count_.load() > 0) {
+                LogInfo("VideoSource")
+                    << "Reconectado (#" << reconnect_count_.load() << "): " << uri_;
+            }
+            empty_streak = 0;
+        }
+
+        cv::Mat frame;
+        const bool ok = cap_.read(frame);
+        if (!ok || frame.empty()) {
+            ++empty_streak;
+            if (empty_streak >= max_empty) {
+                LogWarn("VideoSource")
+                    << "Watchdog: " << empty_streak
+                    << " frames vazios/timeout — liberando e reconectando: " << uri_;
+                hardRelease();
+                reconnect_count_.fetch_add(1, std::memory_order_relaxed);
+                empty_streak = 0;
+                if (!waitReconnectDelay()) {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        empty_streak = 0;
+        {
+            std::lock_guard<std::mutex> lock(frame_mutex_);
+            latest_frame_ = std::move(frame);
+            ++frame_seq_;
+        }
+        frame_cv_.notify_all();
+    }
+
+    hardRelease();
+    LogInfo("VideoSource") << "Grabber encerrado";
 }
 
 bool CvVideoSource::open() {
     stop_.store(false, std::memory_order_relaxed);
+    last_consumed_seq_ = 0;
+    frame_seq_ = 0;
 
     if (!live_) {
         if (!tryOpenOnce()) {
@@ -152,20 +232,24 @@ bool CvVideoSource::open() {
         return true;
     }
 
-    // Live: tenta até sucesso ou requestStop()
-    uint64_t attempt = 0;
+    // Live: grabber faz open + reconnect em background.
+    // open() só retorna true após o primeiro frame (ou shutdown).
+    startGrabber();
+
     while (!shouldStop()) {
-        ++attempt;
-        if (tryOpenOnce()) {
-            return true;
-        }
-        LogWarn("VideoSource") << "Falha ao abrir (tentativa " << attempt
-                               << ") — nova tentativa em "
-                               << options_.reconnect_delay.count() << " ms: " << uri_;
-        if (!waitReconnectDelay()) {
-            break;
+        {
+            std::unique_lock<std::mutex> lock(frame_mutex_);
+            if (frame_cv_.wait_for(lock, std::chrono::milliseconds(200), [&] {
+                    return frame_seq_ > 0 || shouldStop();
+                })) {
+                if (frame_seq_ > 0) {
+                    LogInfo("VideoSource") << "Primeiro frame recebido — pipeline pode seguir";
+                    return true;
+                }
+            }
         }
     }
+    stopGrabber();
     return false;
 }
 
@@ -183,45 +267,23 @@ bool CvVideoSource::read(cv::Mat& frame) {
         return true;
     }
 
-    // Live: nunca desiste até requestStop()
+    // Live: espera próximo frame do grabber. Durante reconnect o main NÃO cai —
+    // apenas aguarda (interruptível por shouldStop).
     while (!shouldStop()) {
-        if (!cap_.isOpened()) {
-            LogWarn("VideoSource") << "Capture fechado — reconectando em "
-                                   << options_.reconnect_delay.count() << " ms";
-            if (!waitReconnectDelay()) {
-                break;
-            }
-            if (tryOpenOnce()) {
-                reconnect_count_.fetch_add(1, std::memory_order_relaxed);
-                LogInfo("VideoSource")
-                    << "Reconectado (#" << reconnect_count_.load() << "): " << uri_;
-            } else {
-                LogWarn("VideoSource") << "Reconexão falhou: " << uri_;
-            }
+        std::unique_lock<std::mutex> lock(frame_mutex_);
+        const bool woke = frame_cv_.wait_for(lock, std::chrono::milliseconds(200), [&] {
+            return frame_seq_ > last_consumed_seq_ || shouldStop();
+        });
+        if (!woke) {
             continue;
         }
-
-        const bool ok = cap_.read(frame);
-        if (ok && !frame.empty()) {
-            return true;
-        }
-
-        // Timeout FFmpeg, socket drop, frame vazio → watchdog
-        frame.release();
-        LogWarn("VideoSource") << "Sem frame (timeout/perda) — liberando e reconectando: "
-                               << uri_;
-        hardRelease();
-
-        if (!waitReconnectDelay()) {
+        if (shouldStop()) {
             break;
         }
-
-        if (tryOpenOnce()) {
-            reconnect_count_.fetch_add(1, std::memory_order_relaxed);
-            LogInfo("VideoSource")
-                << "Reconectado (#" << reconnect_count_.load() << "): " << uri_;
-        } else {
-            LogWarn("VideoSource") << "Reconexão falhou: " << uri_;
+        if (frame_seq_ > last_consumed_seq_) {
+            latest_frame_.copyTo(frame);
+            last_consumed_seq_ = frame_seq_;
+            return !frame.empty();
         }
     }
 
@@ -230,11 +292,16 @@ bool CvVideoSource::read(cv::Mat& frame) {
 }
 
 void CvVideoSource::release() {
-    stop_.store(true, std::memory_order_relaxed);
+    stopGrabber();
     hardRelease();
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    latest_frame_.release();
 }
 
 bool CvVideoSource::isOpened() const {
+    if (live_) {
+        return connected_.load(std::memory_order_relaxed) || grabber_.joinable();
+    }
     return cap_.isOpened();
 }
 

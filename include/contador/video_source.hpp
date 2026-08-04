@@ -4,8 +4,11 @@
 #include <opencv2/videoio.hpp>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 
 namespace contador {
 
@@ -21,12 +24,12 @@ public:
     virtual bool isOpened() const = 0;
     virtual double fps() const = 0;
 
-    /** Interrompe loops de reconexão (ex.: SIGTERM / Ctrl+C). */
+    /** Interrompe loops de reconexão / grabber (SIGTERM / Ctrl+C). */
     virtual void requestStop() {}
 
     /**
-     * Observa um flag externo de "ainda rodando" (ex.: g_running do main).
-     * Quando o flag ficar false, read()/open() saem do loop de reconexão.
+     * Observa flag externo de "ainda rodando" (ex.: g_running do main).
+     * Quando ficar false, open()/read()/grabber saem sem travar o shutdown.
      */
     virtual void bindRunningFlag(std::atomic<bool>* running) { (void)running; }
 };
@@ -38,6 +41,8 @@ struct VideoSourceOptions {
     int open_timeout_ms{8000};
     /** Timeout de leitura de frame (FFmpeg). 0 = default do OpenCV. */
     int read_timeout_ms{5000};
+    /** Falhas/vazios consecutivos antes de forçar reconnect (watchdog). */
+    int max_empty_frames{3};
     int preferred_width{1280};
     int preferred_height{720};
 };
@@ -46,16 +51,21 @@ struct VideoSourceOptions {
  * Lê câmera RTSP / HTTP ou arquivo MP4 via OpenCV VideoCapture.
  *
  * Fontes live (rtsp://, http://, rtmp://, índice de câmera):
- *   - watchdog de falha/timeout de frame
+ *   - thread de grab dedicada (reconexão NÃO bloqueia o pipeline principal)
+ *   - watchdog: timeout FFmpeg + N frames vazios consecutivos
  *   - reconexão indefinida a cada reconnect_delay
- *   - release() explícito a cada ciclo (evita leak de FFmpeg)
+ *   - hardRelease() a cada ciclo (evita leak de FFmpeg)
  *
  * Arquivos locais (MP4 etc.):
- *   - sem reconexão; EOF → read() retorna false
+ *   - leitura síncrona; EOF → read() retorna false
  */
 class CvVideoSource : public IVideoSource {
 public:
     explicit CvVideoSource(std::string uri, VideoSourceOptions options = {});
+    ~CvVideoSource() override;
+
+    CvVideoSource(const CvVideoSource&) = delete;
+    CvVideoSource& operator=(const CvVideoSource&) = delete;
 
     bool open() override;
     bool read(cv::Mat& frame) override;
@@ -66,6 +76,7 @@ public:
     void bindRunningFlag(std::atomic<bool>* running) override;
 
     bool isLive() const { return live_; }
+    bool isConnected() const { return connected_.load(std::memory_order_relaxed); }
     uint64_t reconnectCount() const { return reconnect_count_.load(); }
 
 private:
@@ -73,6 +84,9 @@ private:
     void hardRelease();
     bool waitReconnectDelay();
     bool shouldStop() const;
+    void startGrabber();
+    void stopGrabber();
+    void grabberLoop();
 
     static bool detectLiveUri(const std::string& uri);
 
@@ -81,9 +95,20 @@ private:
     bool live_{false};
     cv::VideoCapture cap_;
     double fps_{25.0};
+
     std::atomic<bool> stop_{false};
     std::atomic<bool>* running_flag_{nullptr};
+    std::atomic<bool> connected_{false};
     std::atomic<uint64_t> reconnect_count_{0};
+
+    // Buffer compartilhado com o pipeline (grabber → read)
+    mutable std::mutex frame_mutex_;
+    std::condition_variable frame_cv_;
+    cv::Mat latest_frame_;
+    uint64_t frame_seq_{0};
+    uint64_t last_consumed_seq_{0};
+
+    std::thread grabber_;
 };
 
 /**
