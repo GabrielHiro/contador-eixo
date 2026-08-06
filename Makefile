@@ -101,6 +101,14 @@ validate: ## Validador Zero-Shot (VIDEO=... WORLD_CONF=... SAVE_DATASET=0|1)
 		--conf $(WORLD_CONF) \
 		$(if $(filter 1 true TRUE yes YES,$(SAVE_DATASET)),--save-dataset,)
 
+train: ## Treina YOLOv8n via Roboflow e exporta models/wheels.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Ative o venv e instale deps (ultralytics, roboflow)"; exit 1)
+	$(VENV)/bin/python treinar_modelo.py
+
+train-export: ## Só reexporta ONNX a partir do best.pt já treinado
+	@test -x "$(VENV)/bin/python" || (echo "Ative o venv primeiro"; exit 1)
+	$(VENV)/bin/python treinar_modelo.py --skip-train
+
 # ---------------------------------------------------------------------------
 # Systemd (Armbian)
 # ---------------------------------------------------------------------------
