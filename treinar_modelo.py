@@ -15,9 +15,10 @@ Uso (com venv ativado):
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
+
+import mlops_common as mlc
 
 # =============================================================================
 # CONFIGURAÇÃO — preencha com os dados do seu projeto Roboflow
@@ -129,77 +130,22 @@ def resolve_data_yaml(skip_download: bool) -> Path:
 
 def train(data_yaml: Path, args: argparse.Namespace) -> Path:
     """Treina YOLOv8n e retorna o caminho de weights/best.pt."""
-    from ultralytics import YOLO
-
-    print(f"[INFO] Carregando pesos base: {BASE_WEIGHTS}")
-    model = YOLO(BASE_WEIGHTS)
-
-    train_kwargs = {
-        "data": str(data_yaml),
-        "epochs": args.epochs,
-        "imgsz": args.imgsz,
-        "batch": args.batch,
-        "workers": args.workers,
-        "project": str(PROJECT_RUNS),
-        "name": RUN_NAME,
-        "exist_ok": True,
-        "pretrained": True,
-        "verbose": True,
-    }
-    if args.device != "":
-        train_kwargs["device"] = args.device
-
-    print(
-        f"[INFO] Treino: epochs={args.epochs} imgsz={args.imgsz} "
-        f"batch={args.batch} device={args.device or 'auto'}"
+    return mlc.train_yolo(
+        data_yaml,
+        base_weights=BASE_WEIGHTS,
+        epochs=args.epochs,
+        imgsz=args.imgsz,
+        batch=args.batch,
+        workers=args.workers,
+        device=args.device,
+        project=PROJECT_RUNS,
+        name=RUN_NAME,
     )
-    model.train(**train_kwargs)
-
-    best_pt = PROJECT_RUNS / RUN_NAME / "weights" / "best.pt"
-    if not best_pt.is_file():
-        raise FileNotFoundError(f"best.pt não encontrado em {best_pt}")
-
-    print(f"[INFO] Melhor checkpoint: {best_pt.resolve()}")
-    return best_pt
 
 
 def export_onnx(weights: Path, imgsz: int) -> Path:
-    """
-    Exporta para ONNX estático + simplificado.
-    dynamic=False  → input fixo [1,3,imgsz,imgsz] (amigável ao Detector C++).
-    simplify=True  → onnxsim; grafo mais enxuto na borda.
-    """
-    from ultralytics import YOLO
-
-    print(f"[INFO] Export ONNX a partir de {weights}")
-    model = YOLO(str(weights))
-
-    exported = model.export(
-        format="onnx",
-        imgsz=imgsz,
-        simplify=True,
-        dynamic=False,
-        opset=12,  # amplo suporte no ORT 1.x da borda
-    )
-
-    # ultralytics devolve str | Path do .onnx gerado (ao lado do .pt)
-    src = Path(exported)
-    if not src.is_file():
-        # Fallback típico: mesmo stem do .pt
-        candidate = weights.with_suffix(".onnx")
-        if candidate.is_file():
-            src = candidate
-        else:
-            raise FileNotFoundError(f"Export ONNX não gerou arquivo: {exported}")
-
-    ONNX_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, ONNX_OUTPUT)
-    print(f"[INFO] ONNX copiado → {ONNX_OUTPUT.resolve()} ({ONNX_OUTPUT.stat().st_size} bytes)")
-    print(
-        "[INFO] Flags: simplify=True, dynamic=False, imgsz="
-        f"{imgsz} — pronto para ./build/contador_eixo --model {ONNX_OUTPUT}"
-    )
-    return ONNX_OUTPUT
+    """Exporta para ONNX estático + simplificado (ver mlops_common.export_onnx)."""
+    return mlc.export_onnx(weights, imgsz, ONNX_OUTPUT)
 
 
 def main() -> int:

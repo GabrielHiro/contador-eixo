@@ -24,17 +24,14 @@ from pathlib import Path
 import cv2
 from ultralytics import YOLOWorld
 
+import mlops_common as mlc
+
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
 
 # Prompts zero-shot focados em rodas/eixos na perspectiva lateral/diagonal.
-CLASS_PROMPTS = [
-    "car wheel",
-    "truck wheel",
-    "vehicle tire",
-    "axle",
-]
+CLASS_PROMPTS = mlc.WHEEL_CLASS_PROMPTS
 
 # Bônus: prepare auto-labeling no formato YOLO (classe cx cy w h normalizados).
 # Pode ser ligado via CLI (--save-dataset) ou alterando o default abaixo.
@@ -112,36 +109,6 @@ def ensure_dataset_dirs(root: Path) -> tuple[Path, Path]:
     return images, labels
 
 
-def boxes_to_yolo_txt(result, img_w: int, img_h: int) -> str:
-    """
-    Converte detecções ultralytics → linhas YOLO.
-    Todas as classes de prompt são mapeadas para class_id=0 (wheel),
-    alinhado ao Detector C++ de uma classe.
-    """
-    lines: list[str] = []
-    if result.boxes is None or len(result.boxes) == 0:
-        return ""
-
-    xyxy = result.boxes.xyxy.cpu().numpy()
-    for box in xyxy:
-        x1, y1, x2, y2 = map(float, box)
-        bw = max(0.0, x2 - x1)
-        bh = max(0.0, y2 - y1)
-        if bw < 1.0 or bh < 1.0:
-            continue
-        cx = (x1 + x2) / 2.0 / img_w
-        cy = (y1 + y2) / 2.0 / img_h
-        nw = bw / img_w
-        nh = bh / img_h
-        # clamp
-        cx = min(max(cx, 0.0), 1.0)
-        cy = min(max(cy, 0.0), 1.0)
-        nw = min(max(nw, 0.0), 1.0)
-        nh = min(max(nh, 0.0), 1.0)
-        lines.append(f"0 {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}")
-    return "\n".join(lines) + ("\n" if lines else "")
-
-
 def save_auto_label(
     frame_bgr,
     result,
@@ -155,7 +122,7 @@ def save_auto_label(
 
     h, w = frame_bgr.shape[:2]
     cv2.imwrite(str(img_path), frame_bgr)
-    lbl_path.write_text(boxes_to_yolo_txt(result, w, h), encoding="utf-8")
+    lbl_path.write_text(mlc.boxes_to_yolo_txt(result, w, h), encoding="utf-8")
 
 
 def main() -> int:

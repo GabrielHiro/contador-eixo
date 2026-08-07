@@ -1,0 +1,15 @@
+{
+  "source": "synthetic",
+  "model_path": "models/wheels.onnx",
+  "conf": 0.45,
+  "nms": 0.45,
+  "imgsz": 640,
+  "threads": 2,
+  "line_x1": 180.0,
+  "line_y1": 160.0,
+  "line_x2": 1100.0,
+  "line_y2": 620.0,
+  "reconnect_ms": 5000,
+  "read_timeout_ms": 5000,
+  "port": 8080
+}

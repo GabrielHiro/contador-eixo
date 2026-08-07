@@ -59,6 +59,8 @@ add_library(contador_core
     src/preprocessing.cpp
     src/detector.cpp
     src/tracker_counter.cpp
+    src/config_store.cpp
+    src/pipeline_controller.cpp
     src/stream_server.cpp
 )
 

@@ -31,11 +31,18 @@ WORLD_MODEL    ?= yolov8s-world.pt
 WORLD_CONF     ?= 0.15
 SAVE_DATASET   ?= 0
 
+# Treino a partir de vídeo (auto-rotulagem local, sem Roboflow)
+VIDEOS         ?= 181327--vv.mp4 181349--vv.mp4
+WORLD_SKIP     ?= 4
+VAL_RATIO      ?= 0.15
+EPOCHS         ?= 100
+
 INSTALL_PREFIX ?= /opt/contador-eixo
 SERVICE_FILE   ?= contador-eixo.service
 
-.PHONY: help ort configure build run clean distclean \
-        venv-world validate install-service uninstall-service status logs \
+.PHONY: help ort configure build run count clean distclean \
+        venv-world validate train train-export dataset-from-video train-from-video \
+        install-service uninstall-service status logs \
         tree
 
 help: ## Mostra esta ajuda
@@ -84,6 +91,18 @@ run: build ## Roda o pipeline (SOURCE/MODEL/PORT configuráveis)
 		--conf $(CONF) \
 		--reconnect-ms $(RECONNECT_MS)
 
+count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make count VIDEO=181327--vv.mp4
+	@test -f "$(BIN)" || (echo "Compile primeiro: make build"; exit 1)
+	@test -f "$(VIDEO)" || (echo "Vídeo não encontrado: $(VIDEO)"; exit 1)
+	$(BIN) \
+		--source "$(VIDEO)" \
+		--model "$(MODEL)" \
+		--line "$(LINE)" \
+		--port $(PORT) \
+		--threads $(THREADS) \
+		--conf $(CONF) \
+		--once
+
 # ---------------------------------------------------------------------------
 # Python — YOLO-World
 # ---------------------------------------------------------------------------
@@ -108,6 +127,24 @@ train: ## Treina YOLOv8n via Roboflow e exporta models/wheels.onnx
 train-export: ## Só reexporta ONNX a partir do best.pt já treinado
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv primeiro"; exit 1)
 	$(VENV)/bin/python treinar_modelo.py --skip-train
+
+dataset-from-video: ## Auto-rotula VIDEOS com YOLO-World e gera datasets/wheels_video (sem treinar)
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_do_video.py \
+		--videos $(VIDEOS) \
+		--conf $(WORLD_CONF) \
+		--skip $(WORLD_SKIP) \
+		--val-ratio $(VAL_RATIO) \
+		--only-dataset
+
+train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta models/wheels.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_do_video.py \
+		--videos $(VIDEOS) \
+		--conf $(WORLD_CONF) \
+		--skip $(WORLD_SKIP) \
+		--val-ratio $(VAL_RATIO) \
+		--epochs $(EPOCHS)
 
 # ---------------------------------------------------------------------------
 # Systemd (Armbian)
@@ -137,7 +174,7 @@ clean: ## Remove diretório build/
 	rm -rf $(BUILD_DIR)
 
 distclean: clean ## clean + remove ORT baixado e venv
-	rm -rf third_party/onnxruntime $(VENV) dataset_yoloworld
+	rm -rf third_party/onnxruntime $(VENV) dataset_yoloworld datasets/wheels_video runs/wheels_video
 
 tree: ## Lista arquivos do projeto (sem build/third_party)
 	@find . -type f \

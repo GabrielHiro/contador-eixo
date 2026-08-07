@@ -1,5 +1,8 @@
 #pragma once
 
+#include "contador/config_store.hpp"
+#include "contador/pipeline_controller.hpp"
+
 #include <opencv2/core.hpp>
 #include <atomic>
 #include <cstdint>
@@ -7,16 +10,26 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace contador {
 
+struct HttpRequest {
+    std::string method;
+    std::string path;
+    std::string body;
+};
+
 /**
  * Servidor HTTP/MJPEG minimalista (POSIX sockets).
  * Endpoints:
- *   GET /          — página HTML com <img> apontando para /stream
- *   GET /stream    — multipart/x-mixed-replace (MJPEG)
- *   GET /health    — "ok"
+ *   GET  /            — painel: estado do pipeline, contagem atual, link p/ stream
+ *   GET  /config      — formulário de configuração (fonte, modelo, linha, thresholds...)
+ *   POST /config      — aplica hot-reload via PipelineController e persiste em disco
+ *   GET  /api/status  — status do pipeline em JSON
+ *   GET  /stream      — multipart/x-mixed-replace (MJPEG)
+ *   GET  /health      — "ok"
  */
 class StreamServer {
 public:
@@ -35,10 +48,23 @@ public:
 
     uint16_t port() const { return port_; }
 
+    /**
+     * Liga o servidor a um PipelineController (telas de status/config) e ao
+     * caminho do arquivo de configuração persistida (config/settings.json).
+     */
+    void attachController(PipelineController* controller, std::string config_path);
+
 private:
     void acceptLoop();
     void handleClient(int client_fd);
     void writeStream(int client_fd);
+    void handleConfigPost(int client_fd, const std::string& body);
+
+    std::string renderDashboard() const;
+    std::string renderConfigForm(const PipelineConfig& cfg, const std::string& message) const;
+    std::string renderStatusJson() const;
+
+    static bool readRequest(int fd, HttpRequest& out);
     static bool sendAll(int fd, const void* data, size_t len);
     static std::string buildHttpResponse(int status,
                                          const std::string& content_type,
@@ -54,6 +80,9 @@ private:
     mutable std::mutex frame_mutex_;
     std::vector<uchar> jpeg_buffer_;
     std::atomic<uint64_t> frame_seq_{0};
+
+    PipelineController* controller_{nullptr};
+    std::string config_path_;
 };
 
 }  // namespace contador

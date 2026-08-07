@@ -14,10 +14,16 @@ WorkingDirectory=/opt/contador-eixo
 
 # Ajuste as flags abaixo para o poste (RTSP, modelo, linha virtual).
 # Exporte LD_LIBRARY_PATH se o ORT não estiver no rpath do binário.
+#
+# Estas flags servem como base do PRIMEIRO boot. Depois de ajustar via tela
+# web /config, os valores ficam persistidos em config/settings.json e passam
+# a prevalecer sobre estas flags nos próximos boots (flags explícitas aqui
+# ainda sobrescrevem o arquivo, caso precise forçar algo pontualmente).
 Environment=LD_LIBRARY_PATH=/opt/contador-eixo/lib
 Environment=OMP_NUM_THREADS=2
 
 ExecStart=/opt/contador-eixo/bin/contador_eixo \
+    --config /opt/contador-eixo/config/settings.json \
     --source rtsp://USER:PASS@CAMERA_IP:554/stream1 \
     --model /opt/contador-eixo/models/wheels.onnx \
     --line 180,160,1100,620 \

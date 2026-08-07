@@ -24,6 +24,13 @@ public:
     virtual bool isOpened() const = 0;
     virtual double fps() const = 0;
 
+    /**
+     * True para fontes que não têm um "fim" natural (RTSP, câmera, sintético):
+     * read() só retorna false por interrupção externa (stop/reconfigure), não EOF.
+     * False para arquivos locais, onde read()==false significa fim do arquivo.
+     */
+    virtual bool isLive() const { return true; }
+
     /** Interrompe loops de reconexão / grabber (SIGTERM / Ctrl+C). */
     virtual void requestStop() {}
 
@@ -72,10 +79,10 @@ public:
     void release() override;
     bool isOpened() const override;
     double fps() const override;
+    bool isLive() const override { return live_; }
     void requestStop() override;
     void bindRunningFlag(std::atomic<bool>* running) override;
 
-    bool isLive() const { return live_; }
     bool isConnected() const { return connected_.load(std::memory_order_relaxed); }
     uint64_t reconnectCount() const { return reconnect_count_.load(); }
 
