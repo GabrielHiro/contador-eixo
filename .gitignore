@@ -17,7 +17,18 @@ compile_commands.json
 # Treino ultralytics / Roboflow
 /datasets/
 /runs/
+# Checkpoints de treino intermediários (não versionar; .onnx de produção vão via LFS)
 *.pt
 __pycache__/
 .venv/
 venv/
+# Caches de teste / lint / empacotamento Python
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+# Logs locais
+*.log
+# Artefatos de SO
+.DS_Store
+Thumbs.db
