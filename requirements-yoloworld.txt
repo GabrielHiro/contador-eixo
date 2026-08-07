@@ -1,4 +1,5 @@
-# Dependências do validador Zero-Shot (YOLO-World) — NÃO usadas no binário C++ da borda.
+# Dependências do validador Zero-Shot (YOLO-World) e treino local — NÃO usadas no binário C++ da borda.
 ultralytics>=8.1.14
 opencv-python>=4.8.0
 torch>=2.0.0
+roboflow>=1.1.0

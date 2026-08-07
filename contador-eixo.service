@@ -25,7 +25,7 @@ Environment=OMP_NUM_THREADS=2
 ExecStart=/opt/contador-eixo/bin/contador_eixo \
     --config /opt/contador-eixo/config/settings.json \
     --source rtsp://USER:PASS@CAMERA_IP:554/stream1 \
-    --model /opt/contador-eixo/models/wheels.onnx \
+    --model /opt/contador-eixo/models/vehicles.onnx \
     --line 180,160,1100,620 \
     --port 8080 \
     --threads 2 \

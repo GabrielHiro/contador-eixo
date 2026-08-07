@@ -33,7 +33,9 @@ struct PipelineStatus {
     std::string source;
     std::string model_path;
     bool is_live{false};
-    int total_count{0};
+    int total_count{0};       ///< Alias de vehicle_count (compatibilidade).
+    int vehicle_count{0};     ///< Veículos que cruzaram a linha.
+    int axle_count{0};        ///< Soma de eixos detectados nos crossings.
     uint64_t frames_processed{0};
     double elapsed_sec{0.0};
     std::string error_message;
@@ -104,6 +106,7 @@ private:
 
     std::unique_ptr<IVideoSource> source_;
     std::unique_ptr<Detector> detector_;
+    std::unique_ptr<Detector> axle_detector_;
     std::unique_ptr<TrackerCounter> tracker_;
 };
 

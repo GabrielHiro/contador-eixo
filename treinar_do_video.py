@@ -7,7 +7,7 @@ Pipeline:
   2) Split cronológico por vídeo (últimos --val-ratio % de cada vídeo → val),
      reduzindo vazamento entre frames quase-idênticos (vídeo é muito redundante).
   3) Treino YOLOv8n (ultralytics) no dataset gerado.
-  4) Export ONNX estático/simplificado → models/wheels.onnx (consumido pelo
+  4) Export ONNX estático/simplificado → models/vehicles.onnx (consumido pelo
      Detector ONNX Runtime do contador_eixo).
 
 Uso (com venv ativado):
@@ -39,7 +39,7 @@ BASE_WEIGHTS = "yolov8n.pt"        # nano — leve para edge
 DATASET_DIR = Path("datasets/wheels_video")
 PROJECT_RUNS = Path("runs/wheels_video")
 RUN_NAME = "train"
-ONNX_OUTPUT = Path("models/wheels.onnx")
+ONNX_OUTPUT = Path("models/vehicles.onnx")
 
 # =============================================================================
 

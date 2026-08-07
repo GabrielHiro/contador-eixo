@@ -111,6 +111,22 @@ void loadInt(const std::string& text, const std::string& key, int& target) {
     }
 }
 
+void loadBool(const std::string& text, const std::string& key, bool& target) {
+    std::string raw;
+    if (findRawValue(text, key, raw)) {
+        for (char& c : raw) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (raw == "true" || raw == "1" || raw == "yes") {
+            target = true;
+        } else if (raw == "false" || raw == "0" || raw == "no") {
+            target = false;
+        } else {
+            LogWarn("ConfigStore") << "Valor inválido para " << key << ": " << raw;
+        }
+    }
+}
+
 }  // namespace
 
 std::string jsonEscape(const std::string& s) {
@@ -164,6 +180,13 @@ bool loadConfig(const std::string& path, PipelineConfig& cfg) {
     loadInt(text, "port", port_tmp);
     cfg.port = static_cast<uint16_t>(port_tmp);
 
+    loadBool(text, "axle_enabled", cfg.axle_enabled);
+    loadString(text, "axle_model_path", cfg.axle_model_path);
+    loadFloat(text, "axle_conf", cfg.axle_conf);
+    loadFloat(text, "axle_nms", cfg.axle_nms);
+    loadInt(text, "axle_imgsz", cfg.axle_imgsz);
+    loadFloat(text, "axle_crop_margin", cfg.axle_crop_margin);
+
     return true;
 }
 
@@ -184,7 +207,13 @@ bool saveConfig(const std::string& path, const PipelineConfig& cfg) {
          << "  \"line_y2\": " << cfg.line.p2.y << ",\n"
          << "  \"reconnect_ms\": " << cfg.reconnect_ms << ",\n"
          << "  \"read_timeout_ms\": " << cfg.read_timeout_ms << ",\n"
-         << "  \"port\": " << cfg.port << "\n"
+         << "  \"port\": " << cfg.port << ",\n"
+         << "  \"axle_enabled\": " << (cfg.axle_enabled ? "true" : "false") << ",\n"
+         << "  \"axle_model_path\": \"" << jsonEscape(cfg.axle_model_path) << "\",\n"
+         << "  \"axle_conf\": " << cfg.axle_conf << ",\n"
+         << "  \"axle_nms\": " << cfg.axle_nms << ",\n"
+         << "  \"axle_imgsz\": " << cfg.axle_imgsz << ",\n"
+         << "  \"axle_crop_margin\": " << cfg.axle_crop_margin << "\n"
          << "}\n";
 
     std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);

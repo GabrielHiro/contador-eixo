@@ -3,12 +3,13 @@
 Sistema de contagem de eixos de veículos (ou de veículos, dependendo do ângulo de câmera — veja
 [Treino a partir de vídeo](#treino-a-partir-de-vídeo-100-local)) na borda (Linux/Armbian).
 
-Pipeline C++17: **PipelineController (VideoSource → letterbox → YOLO ONNX → tracker/counter) → StreamServer (MJPEG + telas web)**.
+Pipeline C++17: **PipelineController (VideoSource → Detector veículos ONNX → TrackerCounter
+→ [no crossing] Detector eixos ONNX no recorte → StreamServer MJPEG + telas web)**.
 
 O `PipelineController` roda em thread própria e suporta **hot-reload**: a tela `/config` altera
 fonte, modelo, linha virtual e thresholds em tempo real, sem reiniciar o processo. Uma fonte tipo
 arquivo de vídeo processa até o fim e mantém o relatório final disponível (estado `finished`) em vez
-de derrubar o servidor — permitindo contar eixos/veículos a partir de um vídeo além do streaming ao vivo.
+de derrubar o servidor — permitindo contar veículos/eixos a partir de um vídeo além do streaming ao vivo.
 
 Validação pré-treino em Python com **YOLO-World** (zero-shot) antes de gerar o modelo leve para a placa.
 
@@ -18,28 +19,38 @@ Validação pré-treino em Python com **YOLO-World** (zero-shot) antes de gerar 
 RTSP / MP4 / synthetic
         │
         ▼
-  VideoSource            ← watchdog + reconexão a cada 5s (live) | EOF em arquivo
+  VideoSource                 ← watchdog + reconexão (live) | EOF em arquivo
         │
         ▼
-  Detector (ONNX)        ← letterbox 640, FP16/FP32, NMS
-        │                  boxes no espaço nativo do frame
-        ▼
-  TrackerCounter          ← centróide × linha virtual diagonal
+  Detector veículos.onnx      ← estágio 1: letterbox 640, NMS
         │
         ▼
-  PipelineController      ← thread própria; hot-reload; EOF ⇒ estado "finished" (não mata o processo)
+  TrackerCounter              ← centróide × linha virtual; emite CrossingEvent
+        │
+        ├─ (sem cruzamento) → próximo frame
+        │
+        └─ CrossingEvent ──► crop da bbox (+ margem)
+                                │
+                                ▼
+                          Detector axles.onnx   ← estágio 2 (1× por veículo contado)
+                                │
+                                ▼
+                          vehicle_count++ / axle_count += N
         │
         ▼
-  StreamServer (HTTP)     ← http://<IP>:8080/  (painel) /config (hot-reload) /stream (MJPEG) /api/status
+  PipelineController          ← thread própria; hot-reload; EOF ⇒ "finished"
+        │
+        ▼
+  StreamServer (HTTP)         ← /  /config  /stream  /api/status
 ```
 
 | Módulo | Responsabilidade |
 |--------|------------------|
 | `VideoSource` | RTSP/MP4/sintético; timeouts FFmpeg; reconnect sem leak; `isLive()` distingue EOF de interrupção |
 | `PreProcessing` | Letterbox (sem homografia — economia na borda) |
-| `Detector` | YOLO genérico via ONNX Runtime |
-| `TrackerCounter` | Rastreamento + anti-contagem dupla |
-| `PipelineController` | Ciclo de vida do pipeline em thread própria; hot-reload; relatório de EOF |
+| `Detector` | YOLO genérico via ONNX Runtime (instanciado 2×: veículos + eixos) |
+| `TrackerCounter` | Rastreamento + anti-contagem dupla; `CrossingEvent` no cruzamento |
+| `PipelineController` | Ciclo de vida do pipeline; hot-reload; estágio 2 no crop; relatório de EOF |
 | `ConfigStore` | Persistência de `PipelineConfig` em `config/settings.json` (JSON simples) |
 | `StreamServer` | HTTP embutido: painel `/`, config `/config`, MJPEG `/stream`, status `/api/status` |
 | `Logger` | INFO / WARN / ERROR para SSH/`journalctl` |
@@ -119,7 +130,7 @@ Exemplo RTSP (streaming contínuo, ajustável depois via `/config`):
 ```bash
 ./build/contador_eixo \
   --source 'rtsp://user:pass@192.168.1.10:554/stream1' \
-  --model models/wheels.onnx \
+  --model models/vehicles.onnx \
   --line 180,160,1100,620 \
   --threads 2 --port 8080
 ```
@@ -127,9 +138,9 @@ Exemplo RTSP (streaming contínuo, ajustável depois via `/config`):
 Exemplo de **contagem em um arquivo de vídeo** (sem RTSP), com relatório e saída automática:
 
 ```bash
-./build/contador_eixo --source video.mp4 --model models/wheels.onnx --once
+./build/contador_eixo --source video.mp4 --model models/vehicles.onnx --once
 # ou:
-make count VIDEO=181349--vv.mp4 MODEL=models/wheels.onnx
+make count VIDEO=181349--vv.mp4 MODEL=models/vehicles.onnx
 ```
 
 Sem `--once`, o mesmo comando processa o vídeo até o fim, mostra "EIXOS: N" sobreposto no último
@@ -163,7 +174,7 @@ make venv-world   # cria .venv e instala ultralytics/opencv-python/torch
 # Gera só o dataset rotulado (sem treinar) — útil para revisar antes de treinar:
 make dataset-from-video VIDEOS="181327--vv.mp4 181349--vv.mp4"
 
-# Rotula + treina YOLOv8n + exporta models/wheels.onnx:
+# Rotula + treina YOLOv8n + exporta models/vehicles.onnx:
 make train-from-video VIDEOS="181327--vv.mp4 181349--vv.mp4" EPOCHS=100
 ```
 
@@ -182,7 +193,7 @@ genéricos de veículo, que tendem a funcionar bem em qualquer ângulo:
 
 > Os dois vídeos de exemplo deste repositório (`181327--vv.mp4`, `181349--vv.mp4`) são de uma câmera
 > aérea noturna (infravermelho) de um cruzamento/estacionamento — as rodas praticamente não aparecem.
-> Por isso o modelo de exemplo em `models/wheels.onnx` foi treinado para **contar veículos** (classe
+> Por isso o modelo de exemplo em `models/vehicles.onnx` foi treinado para **contar veículos** (classe
 > `vehicle`) com esses vídeos, não eixos. Para contagem de eixo de verdade, use vídeos com a câmera
 > em ângulo lateral/diagonal (ver `--line` e a seção de Notas de projeto abaixo) e mantenha os
 > prompts padrão de roda/eixo.
@@ -200,6 +211,62 @@ Principais flags de `treinar_do_video.py`:
 | `--only-dataset` | Só gera o dataset rotulado; não treina |
 | `--skip-dataset` | Reusa dataset já gerado; só treina/exporta |
 | `--epochs` / `--batch` / `--imgsz` | Hiperparâmetros de treino YOLOv8n |
+
+## Contagem de eixos por veículo (2 estágios)
+
+O pipeline de produção usa **dois modelos ONNX**:
+
+1. **`models/vehicles.onnx`** — detecta veículos no frame inteiro; o `TrackerCounter` conta
+   cruzamentos da linha virtual (`vehicle_count`).
+2. **`models/axles.onnx`** — no instante em que um veículo cruzou a linha, o controller recorta a
+   bbox do veículo (com `axle_crop_margin`) e roda uma única inferência de eixos
+   (`axle_count += N`). Assim o estágio 2 é leve o suficiente para SBC (Armbian).
+
+### Treinar os modelos
+
+```bash
+# Variável obrigatória para baixar datasets públicos do Roboflow Universe
+export ROBOFLOW_API_KEY=rf_...          # bash
+# $env:ROBOFLOW_API_KEY='rf_...'        # PowerShell
+
+make venv-world
+pip install -r requirements-yoloworld.txt
+
+# Veículos: Roboflow vehicles-k83q3 + dataset local dos vídeos → models/vehicles.onnx
+make train-vehicles
+
+# Eixos: Zenodo (LabelMe Axle) + Roboflow eixosdecaminhao + Kaggle opcional → models/axles.onnx
+# Kaggle: baixe manualmente e extraia em datasets/external/vehicle-wheel-detection/
+make train-axles KAGGLE_WHEELS_DIR=datasets/external/vehicle-wheel-detection
+
+# Só montar datasets (sem treinar):
+make fetch-axle-datasets
+.venv/bin/python treinar_veiculos.py --only-dataset
+```
+
+Sem `ROBOFLOW_API_KEY`, use `--skip-roboflow` nos scripts (Zenodo e/ou dataset local ainda
+funcionam). Sem a pasta Kaggle, `train-axles` pula essa fonte automaticamente.
+
+### Flags CLI / config do estágio 2
+
+| Flag / campo JSON | Descrição |
+|-------------------|-----------|
+| `--axle-model` / `axle_model_path` | Caminho de `axles.onnx` |
+| `--axle-conf` / `axle_conf` | Confiança do estágio 2 (padrão: 0.35) |
+| `--axle-nms` / `axle_nms` | NMS do estágio 2 |
+| `--axle-imgsz` / `axle_imgsz` | Letterbox do estágio 2 (padrão: 224) |
+| `--no-axle` / `axle_enabled=false` | Desliga o estágio 2 (só conta veículos) |
+| `axle_crop_margin` | Padding proporcional ao redor da bbox (padrão: 0.15) |
+
+```bash
+./build/contador_eixo \
+  --source video.mp4 \
+  --model models/vehicles.onnx \
+  --axle-model models/axles.onnx \
+  --once
+```
+
+O painel `/`, `/api/status` e o relatório `--once` expõem `vehicle_count` e `axle_count`.
 
 ## Validação Zero-Shot (YOLO-World)
 
@@ -231,7 +298,7 @@ Teclas: `q` sair · `p` pausar/despausar.
 /opt/contador-eixo/
   bin/contador_eixo
   lib/libonnxruntime.so*
-  models/wheels.onnx
+  models/vehicles.onnx
   config/settings.json    ← opcional; criado/atualizado pela tela /config
 ```
 
@@ -263,14 +330,17 @@ contador-eixo/
 ├── CMakeLists.txt
 ├── Makefile
 ├── contador-eixo.service
-├── mlops_common.py          # treino/export YOLOv8→ONNX + rotulagem zero-shot (compartilhado)
-├── treinar_modelo.py        # treino a partir de dataset Roboflow
+├── mlops_common.py          # treino/export YOLOv8→ONNX + download Roboflow + rotulagem
+├── datasets_axles.py        # conversores Zenodo/Kaggle/Roboflow → YOLO (classe axle)
+├── treinar_modelo.py        # treino a partir de dataset Roboflow (legado)
 ├── treinar_do_video.py      # treino 100% local a partir de vídeos brutos (auto-labeling)
+├── treinar_veiculos.py      # merge Roboflow vehicles + vídeo → models/vehicles.onnx
+├── treinar_eixos.py         # Zenodo + Roboflow + Kaggle → models/axles.onnx
 ├── validador_yoloworld.py
 ├── requirements-yoloworld.txt
 ├── include/contador/        # headers
 ├── src/                      # implementação C++
-├── models/                   # .onnx (wheels.onnx em produção)
+├── models/                   # vehicles.onnx + axles.onnx (produção)
 ├── config/                   # settings.json persistido pela tela /config
 ├── datasets/wheels_video/    # gerado por treinar_do_video.py (dataset local)
 ├── scripts/
@@ -285,12 +355,15 @@ contador-eixo/
 | `make` / `make build` | Configura CMake (Release) e compila |
 | `make ort` | Baixa ONNX Runtime para `third_party/` |
 | `make run` | Executa com defaults de desenvolvimento (painel web + MJPEG) |
-| `make count` | Conta eixos/objetos em `VIDEO=...` via CLI (`--once`) e sai |
+| `make count` | Conta veículos/eixos em `VIDEO=...` via CLI (`--once`) e sai |
 | `make validate` | Roda o validador YOLO-World |
 | `make venv-world` | Cria `.venv` e instala deps de treino/validação |
 | `make dataset-from-video` | Auto-rotula `VIDEOS=...` (YOLO-World) sem treinar |
-| `make train-from-video` | Auto-rotula + treina YOLOv8n + exporta `models/wheels.onnx` |
-| `make train` / `make train-export` | Treino a partir de dataset Roboflow |
+| `make train-from-video` | Auto-rotula + treina YOLOv8n + exporta `models/vehicles.onnx` |
+| `make train-vehicles` | Merge Roboflow vehicles + dataset local → `models/vehicles.onnx` |
+| `make train-axles` | Zenodo + Roboflow eixos (+ Kaggle) → `models/axles.onnx` |
+| `make fetch-axle-datasets` | Só baixa/converte datasets de eixos (sem treinar) |
+| `make train` / `make train-export` | Treino a partir de dataset Roboflow (legado) |
 | `make clean` / `make distclean` | Remove `build/` (+ ORT/venv/datasets gerados) |
 | `make install-service` | Instala unit systemd |
 | `make help` | Lista alvos |
@@ -301,4 +374,4 @@ contador-eixo/
 - **Resolução nativa:** depende da câmera; letterbox interno (`--imgsz`, padrão 640) mantendo aspect ratio.
 - **Linha virtual:** calibrada visualmente (`--line` ou tela `/config`); o centroide do bbox incrementa o contador ao cruzar.
 - **Hot-reload:** troca de fonte/modelo/linha via `/config` não reinicia o processo; fonte tipo arquivo que chega ao EOF vira estado `finished` (relatório disponível) em vez de encerrar o servidor.
-- Coloque o modelo de produção em `models/wheels.onnx` após treino/export ONNX.
+- **Dois modelos:** `models/vehicles.onnx` (estágio 1) e `models/axles.onnx` (estágio 2, só no crossing).

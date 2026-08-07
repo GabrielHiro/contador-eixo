@@ -15,6 +15,13 @@ e este projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Guia de contribuição (`CONTRIBUTING.md`).
 - Ampliação do `.gitignore` (caches de pytest/ruff, egg-info, dist, logs,
   artefatos de SO).
+- Pipeline de **2 estágios**: detector de veículos + detector de eixos no
+  recorte ao cruzar a linha (`CrossingEvent`, `axles.onnx`, campos `axle_*`
+  na config/CLI/UI).
+- Scripts MLOps: `datasets_axles.py`, `treinar_eixos.py`, `treinar_veiculos.py`;
+  helper `download_roboflow_dataset()`; alvos Make `train-axles` /
+  `train-vehicles` / `fetch-axle-datasets`.
+- Modelo padrão renomeado: `models/vehicles.onnx` (antes `wheels.onnx`).
 
 ### Notes
 
@@ -26,7 +33,8 @@ e este projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Compilação/teste C++ nesta máquina de desenvolvimento Windows depende do
   CI (GitHub Actions, Fase 2): não há WSL com distro nem Docker instalados
   localmente. Testes Python podem rodar no `.venv`.
-
+- Treino de eixos com Zenodo baixa ~979 MB; Roboflow exige `ROBOFLOW_API_KEY`;
+  Kaggle é opcional (pasta local).
 ## [0.1.0] - 2026-08-06
 
 Baseline do projeto antes da higiene de repositório (Fase 0).

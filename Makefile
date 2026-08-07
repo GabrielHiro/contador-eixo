@@ -17,7 +17,8 @@ JOBS           ?= $(shell nproc 2>/dev/null || echo 2)
 
 # Runtime defaults (dev)
 SOURCE         ?= synthetic
-MODEL          ?= models/yolov5n.onnx
+MODEL          ?= models/vehicles.onnx
+AXLE_MODEL     ?= models/axles.onnx
 PORT           ?= 8080
 LINE           ?= 180,160,1100,620
 THREADS        ?= 2
@@ -37,11 +38,18 @@ WORLD_SKIP     ?= 4
 VAL_RATIO      ?= 0.15
 EPOCHS         ?= 100
 
+# Treino de eixos / veículos (2 estágios)
+KAGGLE_WHEELS_DIR ?= datasets/external/vehicle-wheel-detection
+AXLE_IMGSZ     ?= 224
+AXLE_EPOCHS    ?= 50
+VEHICLE_EPOCHS ?= 40
+
 INSTALL_PREFIX ?= /opt/contador-eixo
 SERVICE_FILE   ?= contador-eixo.service
 
 .PHONY: help ort configure build run count clean distclean \
         venv-world validate train train-export dataset-from-video train-from-video \
+        fetch-axle-datasets train-axles train-vehicles \
         install-service uninstall-service status logs \
         tree
 
@@ -52,8 +60,10 @@ help: ## Mostra esta ajuda
 	@echo ""
 	@echo "Exemplos:"
 	@echo "  make ort && make build && make run"
-	@echo "  make run SOURCE='rtsp://user:pass@ip:554/stream1' MODEL=models/wheels.onnx"
+	@echo "  make run SOURCE='rtsp://user:pass@ip:554/stream1' MODEL=models/vehicles.onnx"
 	@echo "  make validate VIDEO=video_teste.mp4 WORLD_CONF=0.12 SAVE_DATASET=1"
+	@echo "  make train-vehicles   # requer ROBOFLOW_API_KEY (opcional com --skip-roboflow)"
+	@echo "  make train-axles      # Zenodo + Roboflow (+ Kaggle se KAGGLE_WHEELS_DIR existir)"
 
 # ---------------------------------------------------------------------------
 # ONNX Runtime
@@ -120,7 +130,7 @@ validate: ## Validador Zero-Shot (VIDEO=... WORLD_CONF=... SAVE_DATASET=0|1)
 		--conf $(WORLD_CONF) \
 		$(if $(filter 1 true TRUE yes YES,$(SAVE_DATASET)),--save-dataset,)
 
-train: ## Treina YOLOv8n via Roboflow e exporta models/wheels.onnx
+train: ## Treina YOLOv8n via Roboflow e exporta models/vehicles.onnx (legado: treinar_modelo.py)
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv e instale deps (ultralytics, roboflow)"; exit 1)
 	$(VENV)/bin/python treinar_modelo.py
 
@@ -135,16 +145,38 @@ dataset-from-video: ## Auto-rotula VIDEOS com YOLO-World e gera datasets/wheels_
 		--conf $(WORLD_CONF) \
 		--skip $(WORLD_SKIP) \
 		--val-ratio $(VAL_RATIO) \
+		--class-name vehicle \
 		--only-dataset
 
-train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta models/wheels.onnx
+train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
 	$(VENV)/bin/python treinar_do_video.py \
 		--videos $(VIDEOS) \
 		--conf $(WORLD_CONF) \
 		--skip $(WORLD_SKIP) \
 		--val-ratio $(VAL_RATIO) \
-		--epochs $(EPOCHS)
+		--epochs $(EPOCHS) \
+		--class-name vehicle \
+		--prompts car vehicle
+
+fetch-axle-datasets: ## Baixa/converte Zenodo + Roboflow eixos (+ Kaggle se existir) sem treinar
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_eixos.py \
+		--only-dataset \
+		--kaggle-dir "$(KAGGLE_WHEELS_DIR)" \
+		$(if $(wildcard $(KAGGLE_WHEELS_DIR)/.),,--skip-kaggle)
+
+train-axles: ## Monta dataset de eixos + treina YOLOv8n + exporta models/axles.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_eixos.py \
+		--epochs $(AXLE_EPOCHS) \
+		--imgsz $(AXLE_IMGSZ) \
+		--kaggle-dir "$(KAGGLE_WHEELS_DIR)" \
+		$(if $(wildcard $(KAGGLE_WHEELS_DIR)/.),,--skip-kaggle)
+
+train-vehicles: ## Merge Roboflow vehicles + dataset local + treina → models/vehicles.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_veiculos.py --epochs $(VEHICLE_EPOCHS)
 
 # ---------------------------------------------------------------------------
 # Systemd (Armbian)
@@ -174,7 +206,10 @@ clean: ## Remove diretório build/
 	rm -rf $(BUILD_DIR)
 
 distclean: clean ## clean + remove ORT baixado e venv
-	rm -rf third_party/onnxruntime $(VENV) dataset_yoloworld datasets/wheels_video runs/wheels_video
+	rm -rf third_party/onnxruntime $(VENV) dataset_yoloworld \
+		datasets/wheels_video datasets/axles_merged datasets/axles_staging \
+		datasets/vehicles_merged datasets/vehicles_staging \
+		runs/wheels_video runs/axles runs/vehicles
 
 tree: ## Lista arquivos do projeto (sem build/third_party)
 	@find . -type f \

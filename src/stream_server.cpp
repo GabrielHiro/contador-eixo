@@ -410,6 +410,22 @@ void StreamServer::handleConfigPost(int client_fd, const std::string& body) {
     getInt("reconnect_ms", cfg.reconnect_ms);
     getInt("read_timeout_ms", cfg.read_timeout_ms);
 
+    {
+        const auto it = fields.find("axle_enabled");
+        if (it != fields.end()) {
+            const std::string& v = it->second;
+            cfg.axle_enabled = (v == "1" || v == "true" || v == "on" || v == "yes");
+        } else {
+            // checkbox HTML: ausente no POST = desmarcado
+            cfg.axle_enabled = false;
+        }
+    }
+    getStr("axle_model_path", cfg.axle_model_path);
+    getFloat("axle_conf", cfg.axle_conf);
+    getFloat("axle_nms", cfg.axle_nms);
+    getInt("axle_imgsz", cfg.axle_imgsz);
+    getFloat("axle_crop_margin", cfg.axle_crop_margin);
+
     if (!ok || cfg.source.empty() || cfg.model_path.empty()) {
         const std::string resp = buildHttpResponse(
             400, "text/html; charset=utf-8",
@@ -459,9 +475,15 @@ std::string StreamServer::renderDashboard() const {
              << toString(st.state) << "\">" << toString(st.state) << "</span></p>"
              << "<p><span class=\"label\">Fonte:</span> " << htmlEscape(cfg.source)
              << (st.is_live ? " (live)" : " (arquivo)") << "</p>"
-             << "<p><span class=\"label\">Modelo:</span> " << htmlEscape(cfg.model_path) << "</p>"
-             << "<p><span class=\"label\">Eixos/objetos contados:</span> <span class=\"count\">"
-             << st.total_count << "</span></p>"
+             << "<p><span class=\"label\">Modelo (veículos):</span> " << htmlEscape(cfg.model_path)
+             << "</p>"
+             << "<p><span class=\"label\">Modelo (eixos):</span> "
+             << (cfg.axle_enabled ? htmlEscape(cfg.axle_model_path) : std::string("(desativado)"))
+             << "</p>"
+             << "<p><span class=\"label\">Veículos contados:</span> <span class=\"count\">"
+             << st.vehicle_count << "</span></p>"
+             << "<p><span class=\"label\">Eixos totais:</span> <span class=\"count\">"
+             << st.axle_count << "</span></p>"
              << "<p><span class=\"label\">Frames processados:</span> " << st.frames_processed
              << "</p>"
              << "<p><span class=\"label\">Duração da sessão:</span> " << std::fixed
@@ -496,7 +518,7 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
 
     html << "<form method=\"POST\" action=\"/config\" class=\"card\">"
          << textField("source", "Fonte (RTSP / caminho de vídeo / 'synthetic')", cfg.source)
-         << textField("model_path", "Modelo (.onnx)", cfg.model_path)
+         << textField("model_path", "Modelo de veículos (.onnx)", cfg.model_path)
          << "<div class=\"row2\">" << numField("conf", "Confiança mínima", cfg.conf, "0.01")
          << numField("nms", "IoU NMS", cfg.nms, "0.01") << "</div>"
          << "<div class=\"row2\">" << numField("imgsz", "Tamanho letterbox", cfg.imgsz, "1")
@@ -509,6 +531,16 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
          << "<div class=\"row2\">"
          << numField("reconnect_ms", "Reconexão RTSP (ms)", cfg.reconnect_ms, "1")
          << numField("read_timeout_ms", "Timeout leitura (ms)", cfg.read_timeout_ms, "1")
+         << "</div>"
+         << "<hr/><h2 style=\"font-size:1.05rem;margin:0.5rem 0\">Estágio 2 — eixos por veículo</h2>"
+         << "<label class=\"label\"><input type=\"checkbox\" name=\"axle_enabled\" value=\"1\""
+         << (cfg.axle_enabled ? " checked" : "")
+         << "/> Habilitar detector de eixos no cruzamento</label>"
+         << textField("axle_model_path", "Modelo de eixos (.onnx)", cfg.axle_model_path)
+         << "<div class=\"row2\">" << numField("axle_conf", "Conf. eixos", cfg.axle_conf, "0.01")
+         << numField("axle_nms", "NMS eixos", cfg.axle_nms, "0.01") << "</div>"
+         << "<div class=\"row2\">" << numField("axle_imgsz", "Letterbox eixos", cfg.axle_imgsz, "1")
+         << numField("axle_crop_margin", "Margem do recorte (0–1)", cfg.axle_crop_margin, "0.01")
          << "</div>"
          << "<button type=\"submit\">Aplicar</button>"
          << "</form>"
@@ -531,8 +563,12 @@ std::string StreamServer::renderStatusJson() const {
          << "\"state\":\"" << toString(st.state) << "\","
          << "\"source\":\"" << jsonEscape(cfg.source) << "\","
          << "\"model_path\":\"" << jsonEscape(cfg.model_path) << "\","
+         << "\"axle_model_path\":\"" << jsonEscape(cfg.axle_model_path) << "\","
+         << "\"axle_enabled\":" << (cfg.axle_enabled ? "true" : "false") << ","
          << "\"is_live\":" << (st.is_live ? "true" : "false") << ","
          << "\"total_count\":" << st.total_count << ","
+         << "\"vehicle_count\":" << st.vehicle_count << ","
+         << "\"axle_count\":" << st.axle_count << ","
          << "\"frames_processed\":" << st.frames_processed << ","
          << "\"elapsed_sec\":" << st.elapsed_sec << ","
          << "\"error_message\":\"" << jsonEscape(st.error_message) << "\""

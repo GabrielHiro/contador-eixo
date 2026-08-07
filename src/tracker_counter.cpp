@@ -36,9 +36,13 @@ bool TrackerCounter::crossedLine(cv::Point2f prev, cv::Point2f curr) const {
     return (d1 * d2 < 0.f) && (d3 * d4 < 0.f);
 }
 
-int TrackerCounter::update(const std::vector<Detection>& detections) {
+int TrackerCounter::update(const std::vector<Detection>& detections,
+                           std::vector<CrossingEvent>* crossings) {
     constexpr int kMaxMissed = 15;
     int newly_counted = 0;
+    if (crossings != nullptr) {
+        crossings->clear();
+    }
 
     std::vector<bool> det_matched(detections.size(), false);
     std::vector<bool> track_matched(tracks_.size(), false);
@@ -79,6 +83,9 @@ int TrackerCounter::update(const std::vector<Detection>& detections) {
             t.counted = true;
             ++total_count_;
             ++newly_counted;
+            if (crossings != nullptr) {
+                crossings->push_back(CrossingEvent{t.id, t.box});
+            }
         }
         prev_centroids_[t.id] = t.centroid;
     }
@@ -123,7 +130,7 @@ void TrackerCounter::reset() {
     next_id_ = 1;
 }
 
-void TrackerCounter::drawOverlay(cv::Mat& frame) const {
+void TrackerCounter::drawOverlay(cv::Mat& frame, int axle_count) const {
     if (frame.empty()) {
         return;
     }
@@ -147,10 +154,14 @@ void TrackerCounter::drawOverlay(cv::Mat& frame) const {
     }
 
     std::ostringstream count_ss;
-    count_ss << "EIXOS: " << total_count_;
-    cv::rectangle(frame, cv::Point(10, 10), cv::Point(280, 70), cv::Scalar(0, 0, 0),
+    if (axle_count >= 0) {
+        count_ss << "Veiculos: " << total_count_ << " | Eixos: " << axle_count;
+    } else {
+        count_ss << "CONTADOS: " << total_count_;
+    }
+    cv::rectangle(frame, cv::Point(10, 10), cv::Point(420, 70), cv::Scalar(0, 0, 0),
                   cv::FILLED);
-    cv::putText(frame, count_ss.str(), cv::Point(20, 55), cv::FONT_HERSHEY_SIMPLEX, 1.2,
+    cv::putText(frame, count_ss.str(), cv::Point(20, 55), cv::FONT_HERSHEY_SIMPLEX, 0.9,
                 cv::Scalar(0, 255, 0), 2);
 }
 

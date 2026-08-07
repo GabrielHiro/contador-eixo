@@ -13,7 +13,7 @@ namespace contador {
  */
 struct PipelineConfig {
     std::string source{"synthetic"};
-    std::string model_path{"models/wheels.onnx"};
+    std::string model_path{"models/vehicles.onnx"};
     float conf{0.45f};
     float nms{0.45f};
     int imgsz{640};
@@ -22,6 +22,14 @@ struct PipelineConfig {
     int reconnect_ms{5000};
     int read_timeout_ms{5000};
     uint16_t port{8080};
+
+    /** Estágio 2: detector de eixos no recorte do veículo ao cruzar a linha. */
+    bool axle_enabled{true};
+    std::string axle_model_path{"models/axles.onnx"};
+    float axle_conf{0.35f};
+    float axle_nms{0.45f};
+    int axle_imgsz{224};
+    float axle_crop_margin{0.15f};
 };
 
 /**

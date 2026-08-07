@@ -12,6 +12,11 @@ namespace contador {
  * Rastreamento por centróide + contagem por interseção com linha virtual.
  * Evita contagem dupla marcando cada track como `counted` após cruzar a linha.
  */
+struct CrossingEvent {
+    int track_id{-1};
+    cv::Rect box;
+};
+
 class TrackerCounter {
 public:
     explicit TrackerCounter(CountLine line, float max_match_distance = 80.f);
@@ -21,17 +26,23 @@ public:
 
     /**
      * Atualiza tracks com as detecções do frame atual.
-     * @return número de novos eixos contados neste frame.
+     * @param crossings se não-nulo, recebe um CrossingEvent por track que
+     *        acabou de cruzar a linha neste frame (útil para o estágio 2).
+     * @return número de novos objetos contados neste frame.
      */
-    int update(const std::vector<Detection>& detections);
+    int update(const std::vector<Detection>& detections,
+               std::vector<CrossingEvent>* crossings = nullptr);
 
     int totalCount() const { return total_count_; }
     const std::vector<Track>& tracks() const { return tracks_; }
 
     void reset();
 
-    /** Desenha linha virtual, tracks e contador no frame. */
-    void drawOverlay(cv::Mat& frame) const;
+    /**
+     * Desenha linha virtual, tracks e contador no frame.
+     * Se axle_count >= 0, exibe "Veiculos: V | Eixos: E"; senão só o total.
+     */
+    void drawOverlay(cv::Mat& frame, int axle_count = -1) const;
 
 private:
     bool crossedLine(cv::Point2f prev, cv::Point2f curr) const;

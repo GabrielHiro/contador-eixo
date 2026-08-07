@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-mlops_common.py — funções compartilhadas de treino/export YOLOv8 → ONNX
+mlops_common.py — funções compartilhadas de treino/export YOLOv8 -> ONNX
 e de rotulagem zero-shot (YOLO-World) usadas por:
 
   - treinar_modelo.py     (dataset baixado do Roboflow)
@@ -15,6 +15,7 @@ Mantém as mesmas convenções de export usadas no binário C++ (Detector ONNX R
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -33,7 +34,7 @@ WHEEL_CLASS_PROMPTS = [
 
 def boxes_to_yolo_txt(result, img_w: int, img_h: int) -> str:
     """
-    Converte detecções ultralytics → linhas YOLO.
+    Converte detecções ultralytics -> linhas YOLO.
     Todas as classes de prompt são mapeadas para class_id=0 (wheel),
     alinhado ao Detector C++ de uma classe.
     """
@@ -61,7 +62,61 @@ def boxes_to_yolo_txt(result, img_w: int, img_h: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Treino / export YOLOv8n → ONNX
+# Download de datasets públicos (Roboflow Universe)
+# ---------------------------------------------------------------------------
+
+
+def download_roboflow_dataset(
+    workspace: str,
+    project: str,
+    dest: Path,
+    *,
+    version: int | None = None,
+    model_format: str = "yolov8",
+    api_key_env: str = "ROBOFLOW_API_KEY",
+    overwrite: bool = True,
+) -> Path:
+    """
+    Baixa um dataset público do Roboflow Universe via SDK.
+
+    A chave é lida de ``os.environ[api_key_env]`` (padrão: ROBOFLOW_API_KEY).
+    Nunca hardcodeie a chave no repositório.
+    """
+    import roboflow
+
+    api_key = os.environ.get(api_key_env, "").strip()
+    if not api_key:
+        raise SystemExit(
+            f"Defina a variável de ambiente {api_key_env} com sua chave do Roboflow.\n"
+            f"  Windows PowerShell: $env:{api_key_env}='rf_...'\n"
+            f"  bash:               export {api_key_env}=rf_..."
+        )
+
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] Roboflow: {workspace}/{project}" + (f" v{version}" if version else " (última versão)"))
+    rf = roboflow.Roboflow(api_key=api_key)
+    proj = rf.workspace(workspace).project(project)
+
+    if version is not None:
+        ver = proj.version(version)
+    else:
+        versions = list(proj.versions())
+        if not versions:
+            raise SystemExit(f"Projeto {workspace}/{project} sem versões publicadas")
+        # versions() retorna objetos Version; o mais recente costuma ser o de maior número.
+        latest = max(versions, key=lambda v: int(getattr(v, "version", 0) or 0))
+        ver = proj.version(int(latest.version))
+
+    ds = ver.download(model_format, location=str(dest), overwrite=overwrite)
+    location = Path(getattr(ds, "location", dest))
+    print(f"[INFO] Dataset Roboflow em {location.resolve()}")
+    return location
+
+
+# ---------------------------------------------------------------------------
+# Treino / export YOLOv8n -> ONNX
 # ---------------------------------------------------------------------------
 
 
@@ -120,8 +175,8 @@ def train_yolo(
 def export_onnx(weights: Path, imgsz: int, onnx_output: Path) -> Path:
     """
     Exporta para ONNX estático + simplificado.
-    dynamic=False  → input fixo [1,3,imgsz,imgsz] (amigável ao Detector C++).
-    simplify=True  → onnxsim; grafo mais enxuto na borda.
+    dynamic=False  -> input fixo [1,3,imgsz,imgsz] (amigável ao Detector C++).
+    simplify=True  -> onnxsim; grafo mais enxuto na borda.
     """
     from ultralytics import YOLO
 
@@ -148,7 +203,7 @@ def export_onnx(weights: Path, imgsz: int, onnx_output: Path) -> Path:
     onnx_output = Path(onnx_output)
     onnx_output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, onnx_output)
-    print(f"[INFO] ONNX copiado → {onnx_output.resolve()} ({onnx_output.stat().st_size} bytes)")
+    print(f"[INFO] ONNX copiado -> {onnx_output.resolve()} ({onnx_output.stat().st_size} bytes)")
     print(
         "[INFO] Flags: simplify=True, dynamic=False, imgsz="
         f"{imgsz} — pronto para ./build/contador_eixo --model {onnx_output}"

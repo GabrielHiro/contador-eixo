@@ -2,7 +2,7 @@
 """
 treinar_modelo.py — fluxo MLOps: Roboflow → YOLOv8n → ONNX (borda C++).
 
-Gera models/wheels.onnx compatível com o Detector ONNX Runtime do contador_eixo:
+Gera models/vehicles.onnx compatível com o Detector ONNX Runtime do contador_eixo:
   - simplify=True
   - dynamic=False   (shape fixo; evita surpresas no Ort::Session em Armbian)
 
@@ -41,7 +41,7 @@ PROJECT_RUNS = Path("runs/wheels")        # ultralytics project/
 RUN_NAME = "train"
 
 # Export ONNX → pasta models/ consumida pelo binário C++
-ONNX_OUTPUT = Path("models/wheels.onnx")
+ONNX_OUTPUT = Path("models/vehicles.onnx")
 
 # =============================================================================
 

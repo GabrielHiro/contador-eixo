@@ -34,7 +34,7 @@ void printUsage(const char* argv0) {
         << "Uso: " << argv0 << " [opções]\n"
         << "  --source <uri>         RTSP/MP4/índice, ou 'synthetic' (padrão)\n"
         << "  --port <n>             Porta MJPEG/painel web (padrão: 8080)\n"
-        << "  --model <path>         Modelo YOLO .onnx\n"
+        << "  --model <path>         Modelo YOLO de veículos .onnx (padrão: models/vehicles.onnx)\n"
         << "  --conf <f>             Confiança mínima (padrão: 0.45)\n"
         << "  --nms <f>              IoU NMS (padrão: 0.45)\n"
         << "  --imgsz <n>            Letterbox YOLO (padrão: 640)\n"
@@ -42,6 +42,11 @@ void printUsage(const char* argv0) {
         << "  --line x1,y1,x2,y2     Linha virtual diagonal\n"
         << "  --reconnect-ms <n>     Intervalo de reconexão RTSP (padrão: 5000)\n"
         << "  --read-timeout-ms <n>  Timeout de frame FFmpeg (padrão: 5000)\n"
+        << "  --axle-model <path>    Modelo YOLO de eixos .onnx (padrão: models/axles.onnx)\n"
+        << "  --axle-conf <f>        Confiança do estágio 2 (padrão: 0.35)\n"
+        << "  --axle-nms <f>         NMS do estágio 2 (padrão: 0.45)\n"
+        << "  --axle-imgsz <n>       Letterbox do estágio 2 (padrão: 224)\n"
+        << "  --no-axle              Desabilita o detector de eixos (só conta veículos)\n"
         << "  --config <path>        Arquivo de config persistida (padrão: config/settings.json)\n"
         << "                         Carregado como base; flags explícitas acima sobrescrevem.\n"
         << "  --once                 Encerra automaticamente ao concluir uma fonte não-live\n"
@@ -112,6 +117,17 @@ int main(int argc, char** argv) {
                 return 1;
             }
             cfg.line = parsed;
+        } else if (arg == "--axle-model") {
+            cfg.axle_model_path = need("--axle-model");
+            cfg.axle_enabled = true;
+        } else if (arg == "--axle-conf") {
+            cfg.axle_conf = std::stof(need("--axle-conf"));
+        } else if (arg == "--axle-nms") {
+            cfg.axle_nms = std::stof(need("--axle-nms"));
+        } else if (arg == "--axle-imgsz") {
+            cfg.axle_imgsz = std::stoi(need("--axle-imgsz"));
+        } else if (arg == "--no-axle") {
+            cfg.axle_enabled = false;
         } else {
             contador::LogError("main") << "Argumento desconhecido: " << arg;
             printUsage(argv[0]);
@@ -149,7 +165,8 @@ int main(int argc, char** argv) {
         }
         const auto st = controller.status();
         contador::LogInfo("main") << "Relatório --once: estado=" << contador::toString(st.state)
-                                  << " | contagem=" << st.total_count
+                                  << " | veiculos=" << st.vehicle_count
+                                  << " | eixos=" << st.axle_count
                                   << " | frames=" << st.frames_processed << " | duração="
                                   << st.elapsed_sec << "s";
         if (!st.error_message.empty()) {

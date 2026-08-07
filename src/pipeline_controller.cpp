@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <vector>
 
 namespace contador {
 
@@ -114,10 +115,26 @@ bool PipelineController::openPipeline(const PipelineConfig& cfg, std::string& er
         return false;
     }
 
+    std::unique_ptr<Detector> new_axle;
+    if (cfg.axle_enabled && !cfg.axle_model_path.empty()) {
+        new_axle = std::make_unique<Detector>();
+        if (!new_axle->load(cfg.axle_model_path, cfg.axle_conf, cfg.axle_nms, cfg.axle_imgsz,
+                            cfg.threads)) {
+            LogWarn("PipelineController")
+                << "Falha ao carregar modelo de eixos: " << cfg.axle_model_path
+                << " — seguindo só com contagem de veículos";
+            new_axle.reset();
+        } else {
+            LogInfo("PipelineController")
+                << "Estágio 2 (eixos) ativo: " << cfg.axle_model_path;
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(mutex_);
         source_ = std::move(new_source);
         detector_ = std::move(new_detector);
+        axle_detector_ = std::move(new_axle);
         tracker_ = std::make_unique<TrackerCounter>(cfg.line);
     }
     return true;
@@ -131,6 +148,7 @@ void PipelineController::closePipeline() {
         source_.reset();
     }
     detector_.reset();
+    axle_detector_.reset();
     tracker_.reset();
 }
 
@@ -159,6 +177,8 @@ void PipelineController::workerLoop() {
             status_.model_path = cfg.model_path;
             status_.error_message.clear();
             status_.total_count = 0;
+            status_.vehicle_count = 0;
+            status_.axle_count = 0;
             status_.frames_processed = 0;
             status_.elapsed_sec = 0.0;
         }
@@ -219,8 +239,49 @@ void PipelineController::workerLoop() {
             }
 
             const auto detections = detector_->detect(frame);
-            tracker_->update(detections);
-            tracker_->drawOverlay(frame);
+            std::vector<CrossingEvent> crossings;
+            tracker_->update(detections, &crossings);
+
+            // Estágio 2: para cada veículo que acabou de cruzar a linha, recorta
+            // a bbox (com margem) e roda o detector de eixos uma vez.
+            for (const auto& ev : crossings) {
+                int n_axles = 0;
+                if (axle_detector_ && axle_detector_->isLoaded()) {
+                    const float margin = std::max(0.f, cfg.axle_crop_margin);
+                    const int pad_x = static_cast<int>(ev.box.width * margin);
+                    const int pad_y = static_cast<int>(ev.box.height * margin);
+                    cv::Rect crop = ev.box;
+                    crop.x = std::max(0, crop.x - pad_x);
+                    crop.y = std::max(0, crop.y - pad_y);
+                    crop.width = std::min(frame.cols - crop.x, crop.width + 2 * pad_x);
+                    crop.height = std::min(frame.rows - crop.y, crop.height + 2 * pad_y);
+
+                    if (crop.width >= 8 && crop.height >= 8) {
+                        const cv::Mat roi = frame(crop);
+                        const auto axle_dets = axle_detector_->detect(roi);
+                        n_axles = static_cast<int>(axle_dets.size());
+                        for (const auto& ad : axle_dets) {
+                            cv::Rect mapped = ad.box;
+                            mapped.x += crop.x;
+                            mapped.y += crop.y;
+                            cv::rectangle(frame, mapped, cv::Scalar(0, 255, 255), 2);
+                        }
+                    }
+                }
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    status_.axle_count += n_axles;
+                }
+                LogInfo("PipelineController")
+                    << "veiculo #" << ev.track_id << " cruzou linha -> " << n_axles << " eixos";
+            }
+
+            int axle_overlay = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                axle_overlay = status_.axle_count;
+            }
+            tracker_->drawOverlay(frame, axle_detector_ ? axle_overlay : -1);
             for (const auto& d : detections) {
                 cv::rectangle(frame, d.box, cv::Scalar(255, 180, 0), 1);
                 cv::putText(frame,
@@ -233,7 +294,8 @@ void PipelineController::workerLoop() {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 sink = frame_sink_;
-                status_.total_count = tracker_->totalCount();
+                status_.vehicle_count = tracker_->totalCount();
+                status_.total_count = status_.vehicle_count;
                 status_.frames_processed += 1;
                 status_.elapsed_sec =
                     std::chrono::duration<double>(std::chrono::steady_clock::now() - started_at)
@@ -250,11 +312,13 @@ void PipelineController::workerLoop() {
         }
 
         int final_count = 0;
+        int final_axles = 0;
         uint64_t final_frames = 0;
         double final_elapsed = 0.0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            final_count = status_.total_count;
+            final_count = status_.vehicle_count;
+            final_axles = status_.axle_count;
             final_frames = status_.frames_processed;
             final_elapsed = status_.elapsed_sec;
         }
@@ -280,8 +344,8 @@ void PipelineController::workerLoop() {
                 status_.state = PipelineState::Finished;
             }
             LogInfo("PipelineController")
-                << "Fim do arquivo — total de eixos: " << final_count << " | frames: "
-                << final_frames << " | duração: " << final_elapsed << "s";
+                << "Fim do arquivo — veiculos: " << final_count << " | eixos: " << final_axles
+                << " | frames: " << final_frames << " | duração: " << final_elapsed << "s";
         } else {  // LiveInterrupted sem stop/pending — condição rara; trata como erro transitório
             std::lock_guard<std::mutex> lock(mutex_);
             status_.state = PipelineState::Error;
