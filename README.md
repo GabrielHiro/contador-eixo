@@ -46,6 +46,21 @@ RTSP / MP4 / synthetic
 
 ## Requisitos
 
+### Git LFS (clone / pull)
+
+Vídeos de treino (`.mp4`) e modelos ONNX (`.onnx`) são versionados via
+[Git LFS](https://git-lfs.com/). Antes do primeiro clone (ou se os arquivos
+binários aparecerem como ponteiros de texto):
+
+```bash
+# Instalar o cliente LFS (uma vez por máquina) e inicializar neste clone
+# Windows: https://git-lfs.com  |  Debian/Ubuntu: sudo apt install git-lfs
+git lfs install
+git lfs pull
+```
+
+Sem o LFS instalado, `models/*.onnx` e `*.mp4` não baixam o conteúdo real.
+
 ### Runtime C++ (borda)
 
 - CMake ≥ 3.16, g++ com C++17
