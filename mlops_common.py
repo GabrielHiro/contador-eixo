@@ -15,6 +15,7 @@ Mantém as mesmas convenções de export usadas no binário C++ (Detector ONNX R
 
 from __future__ import annotations
 
+import time
 import os
 import shutil
 from pathlib import Path
@@ -209,3 +210,99 @@ def export_onnx(weights: Path, imgsz: int, onnx_output: Path) -> Path:
         f"{imgsz} — pronto para ./build/contador_eixo --model {onnx_output}"
     )
     return onnx_output
+
+
+def merge_pretrained_with_local_dataset(
+    pretrained_weights: str,
+    local_data_yaml: str,
+    output_dir: Path,
+    epochs: int = 50,
+    imgsz: int = 640,
+    batch: int = 16,
+    workers: int = 4,
+    device: str = "",
+) -> Path:
+    """
+    Faz fine-tuning de um checkpoint pré-treinado no dataset local e retorna best.pt.
+
+    O nome segue o contrato pedido no prompt, mas a implementação reaproveita o
+    fluxo já existente de treino YOLOv8.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    best_pt = train_yolo(
+        Path(local_data_yaml),
+        base_weights=pretrained_weights,
+        epochs=epochs,
+        imgsz=imgsz,
+        batch=batch,
+        workers=workers,
+        device=device,
+        project=output_dir,
+        name="fine_tune",
+    )
+    return best_pt
+
+
+def compare_models(model_paths: list[str], test_video: str) -> dict:
+    """
+    Compara múltiplos modelos ONNX/YOLO no mesmo vídeo de teste.
+
+    Retorna métricas simples e estáveis para seleção rápida:
+    - fps
+    - detections_per_frame
+    - mean_confidence
+    """
+    import cv2
+    from ultralytics import YOLO
+
+    video_path = Path(test_video)
+    if not video_path.is_file():
+        raise FileNotFoundError(f"Vídeo de teste não encontrado: {video_path}")
+
+    results: dict[str, dict[str, float]] = {}
+    max_frames = 120
+
+    for model_path_str in model_paths:
+        model_path = Path(model_path_str)
+        if not model_path.is_file():
+            raise FileNotFoundError(f"Modelo não encontrado: {model_path}")
+
+        model = YOLO(str(model_path))
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise FileNotFoundError(f"Não foi possível abrir o vídeo: {video_path}")
+
+        frame_count = 0
+        total_detections = 0
+        confidence_sum = 0.0
+        detections_with_conf = 0
+        started = time.perf_counter()
+
+        while frame_count < max_frames:
+            ok, frame = cap.read()
+            if not ok:
+                break
+
+            prediction = model.predict(frame, verbose=False)
+            result = prediction[0]
+            boxes = getattr(result, "boxes", None)
+            n_boxes = 0 if boxes is None else len(boxes)
+            total_detections += n_boxes
+            if boxes is not None and n_boxes > 0 and getattr(boxes, "conf", None) is not None:
+                confidence_sum += float(boxes.conf.mean().item())
+                detections_with_conf += 1
+
+            frame_count += 1
+
+        elapsed = max(time.perf_counter() - started, 1e-9)
+        cap.release()
+
+        results[str(model_path)] = {
+            "fps": frame_count / elapsed,
+            "detections_per_frame": (total_detections / frame_count) if frame_count else 0.0,
+            "mean_confidence": (confidence_sum / detections_with_conf) if detections_with_conf else 0.0,
+            "frames": float(frame_count),
+        }
+
+    return results

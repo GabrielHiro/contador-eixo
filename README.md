@@ -99,6 +99,22 @@ make run
 ./build/contador_eixo --source synthetic --model models/yolov5n.onnx --port 8080
 ```
 
+## Setup Rápido com Vídeo Local
+
+Para testar rapidamente um vídeo seu, use o assistente interativo:
+
+```bash
+make quick-setup
+```
+
+O script verifica ONNX Runtime, binário compilado e venv Python. Se algo faltar, ele mostra os
+comandos exatos para correção. Depois, pede o vídeo local, valida o modelo `.onnx` e monta o
+comando de execução com `--once` para contagem em lote.
+
+Esse fluxo mantém a execução principal no binário C++ do projeto, com as duas etapas ativas por
+padrão: detecção de veículos no frame inteiro e detecção de eixos no recorte da bbox quando o
+veículo cruza a linha virtual.
+
 Abrir no navegador:
 
 | URL | Conteúdo |
@@ -247,6 +263,26 @@ make fetch-axle-datasets
 Sem `ROBOFLOW_API_KEY`, use `--skip-roboflow` nos scripts (Zenodo e/ou dataset local ainda
 funcionam). Sem a pasta Kaggle, `train-axles` pula essa fonte automaticamente.
 
+### Modelos pré-treinados
+
+O repositório agora inclui um catálogo de fontes públicas e um fluxo de cache em
+`models/pretrained_cache/` para acelerar prototipagem e fine-tuning.
+
+```bash
+# Lista as fontes disponíveis e abre o menu interativo
+make download-pretrained
+
+# Gera o melhor detector de veículos disponível e salva o ONNX em models/vehicles.onnx
+make download-vehicles
+
+# Combina Zenodo + Roboflow de eixos e salva o ONNX em models/axles.onnx
+make download-axles
+```
+
+Quando quiser refinar com um checkpoint pré-treinado já salvo, aponte `BASE_WEIGHTS` no Makefile
+ou passe `--base-weights` diretamente nos scripts de treino. O fluxo padrão continua funcionando
+como antes.
+
 ### Flags CLI / config do estágio 2
 
 | Flag / campo JSON | Descrição |
@@ -331,6 +367,8 @@ contador-eixo/
 ├── Makefile
 ├── contador-eixo.service
 ├── mlops_common.py          # treino/export YOLOv8→ONNX + download Roboflow + rotulagem
+├── download_pretrained_models.py # CLI standalone para fontes pré-treinadas
+├── pretrained_models.py     # catálogo/cache/validação de fontes pré-treinadas
 ├── datasets_axles.py        # conversores Zenodo/Kaggle/Roboflow → YOLO (classe axle)
 ├── treinar_modelo.py        # treino a partir de dataset Roboflow (legado)
 ├── treinar_do_video.py      # treino 100% local a partir de vídeos brutos (auto-labeling)
@@ -362,6 +400,9 @@ contador-eixo/
 | `make train-from-video` | Auto-rotula + treina YOLOv8n + exporta `models/vehicles.onnx` |
 | `make train-vehicles` | Merge Roboflow vehicles + dataset local → `models/vehicles.onnx` |
 | `make train-axles` | Zenodo + Roboflow eixos (+ Kaggle) → `models/axles.onnx` |
+| `make download-pretrained` | Menu interativo de fontes públicas pré-treinadas |
+| `make download-vehicles` | Roboflow vehicles-k83q3 → `models/vehicles.onnx` |
+| `make download-axles` | Zenodo + Roboflow eixos → `models/axles.onnx` |
 | `make fetch-axle-datasets` | Só baixa/converte datasets de eixos (sem treinar) |
 | `make train` / `make train-export` | Treino a partir de dataset Roboflow (legado) |
 | `make clean` / `make distclean` | Remove `build/` (+ ORT/venv/datasets gerados) |

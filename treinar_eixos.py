@@ -48,6 +48,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-roboflow", action="store_true")
     p.add_argument("--skip-kaggle", action="store_true")
     p.add_argument("--force-zenodo", action="store_true", help="Rebaixar/reextrair Zenodo")
+    p.add_argument(
+        "--auto",
+        action="store_true",
+        help="Modo automático: melhor esforço com todas as fontes e uso de pré-treinado em cache se existir",
+    )
+    p.add_argument(
+        "--use-pretrained",
+        action="store_true",
+        help="Usa um peso base pré-treinado em cache quando disponível",
+    )
     p.add_argument("--only-dataset", action="store_true")
     p.add_argument("--skip-dataset", action="store_true")
     p.add_argument("--epochs", type=int, default=50)
@@ -55,9 +65,32 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch", type=int, default=16)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--device", default="")
+    p.add_argument("--base-weights", default="yolov8n.pt", help="Checkpoint base do YOLO")
+    p.add_argument(
+        "--pretrained-cache",
+        type=Path,
+        default=Path("models/pretrained_cache"),
+        help="Diretório do cache de modelos pré-treinados",
+    )
     p.add_argument("--val-ratio", type=float, default=0.15)
     p.add_argument("--onnx-output", type=Path, default=ONNX_OUTPUT)
     return p.parse_args()
+
+
+def resolve_base_weights(args: argparse.Namespace) -> str:
+    if args.auto:
+        args.use_pretrained = True
+
+    if not args.use_pretrained:
+        return args.base_weights
+
+    cached = args.pretrained_cache / "weights__axles-composite" / "best.pt"
+    if cached.is_file():
+        print(f"[INFO] Peso pré-treinado em cache: {cached}")
+        return str(cached)
+
+    print(f"[INFO] Cache de pré-treinado ausente em {cached}; usando {args.base_weights}")
+    return args.base_weights
 
 
 def build_dataset(args: argparse.Namespace) -> Path:
@@ -127,6 +160,7 @@ def build_dataset(args: argparse.Namespace) -> Path:
 
 def main() -> int:
     args = parse_args()
+    base_weights = resolve_base_weights(args)
 
     if args.skip_dataset:
         yaml_path = MERGED / "data.yaml"
@@ -143,6 +177,7 @@ def main() -> int:
 
     best = mlc.train_yolo(
         yaml_path,
+        base_weights=base_weights,
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,

@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <sstream>
 
@@ -22,21 +23,24 @@ namespace {
 constexpr const char* kBaseStyle =
     "<style>\n"
     "  * { box-sizing: border-box; margin: 0; padding: 0; }\n"
-    "  body { background: #111; color: #eee; font-family: sans-serif;\n"
-    "         min-height: 100vh; display: flex; flex-direction: column;\n"
-    "         align-items: center; padding: 2rem 1rem; gap: 1rem; }\n"
-    "  h1 { font-weight: 500; letter-spacing: 0.04em; }\n"
-    "  .wrap { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 1rem; }\n"
-    "  nav { text-align: center; color: #9ad; }\n"
-    "  nav a { color: #7cf; text-decoration: none; }\n"
-    "  nav a:hover { text-decoration: underline; }\n"
-    "  .card { background: #1b1b1b; border: 1px solid #333; border-radius: 8px; padding: 1.2rem 1.4rem; }\n"
+    "  body { background: linear-gradient(180deg, #0c1118 0%, #111826 100%); color: #eef3fb;\n"
+    "         font-family: sans-serif; min-height: 100vh; padding: 1.2rem; }\n"
+    "  h1, h2 { font-weight: 600; letter-spacing: 0.02em; }\n"
+    "  h1 { font-size: 1.6rem; }\n"
+    "  h2 { font-size: 1.1rem; margin-bottom: 0.4rem; }\n"
+    "  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }\n"
+    "  .nav { display: flex; flex-wrap: wrap; gap: 0.5rem; }\n"
+    "  .nav a { color: #d8e7ff; text-decoration: none; background: #172030; border: 1px solid #2b3b53;\n"
+    "           border-radius: 999px; padding: 0.45rem 0.8rem; }\n"
+    "  .nav a:hover { background: #213149; }\n"
+    "  .layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1rem; align-items: start; }\n"
+    "  .card { background: rgba(13, 19, 29, 0.92); border: 1px solid #273244; border-radius: 14px; padding: 1.1rem 1.2rem; box-shadow: 0 12px 32px rgba(0,0,0,0.18); }\n"
     "  .card p { margin: 0.35rem 0; }\n"
     "  .label { color: #999; }\n"
-    "  .count { color: #4f4; font-size: 1.3rem; }\n"
+    "  .count { color: #7dff9e; font-size: 1.3rem; font-weight: 700; }\n"
     "  .error, .notice { padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.5rem; }\n"
-    "  .error { background: #3a1414; color: #f88; border: 1px solid #722; }\n"
-    "  .notice { background: #123a1c; color: #8f8; border: 1px solid #274; }\n"
+    "  .error { background: #3a1414; color: #ffb2b2; border: 1px solid #7c2f2f; }\n"
+    "  .notice { background: #123a1c; color: #a8ffbf; border: 1px solid #245d36; }\n"
     "  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.85rem; }\n"
     "  .badge-running { background: #123a1c; color: #8f8; }\n"
     "  .badge-finished { background: #1a2a3a; color: #8cf; }\n"
@@ -44,17 +48,100 @@ constexpr const char* kBaseStyle =
     "  .badge-error { background: #3a1414; color: #f88; }\n"
     "  .badge-stopped { background: #2a2a2a; color: #aaa; }\n"
     "  .badge-idle { background: #2a2a2a; color: #aaa; }\n"
-    "  .preview { max-width: 100%; border: 1px solid #333; border-radius: 8px; }\n"
+    "  .preview { width: 100%; max-width: 100%; border: 1px solid #304057; border-radius: 12px; background: #0b0f15; }\n"
+    "  .preview-stage { position: relative; width: 100%; border: 1px solid #304057; border-radius: 12px; overflow: hidden; background: #0b0f15; }\n"
+    "  .preview-stage img { display: block; width: 100%; height: auto; }\n"
+    "  .preview-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }\n"
+    "  .preview-hud { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }\n"
+    "  .chip { display: inline-flex; align-items: center; gap: 0.35rem; border-radius: 999px; padding: 0.3rem 0.6rem; background: #152233; border: 1px solid #2d415c; color: #d8e7ff; font-size: 0.86rem; }\n"
     "  .meta { color: #777; font-size: 0.85rem; }\n"
     "  form.card { display: flex; flex-direction: column; gap: 0.7rem; }\n"
-    "  form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; color: #bbb; }\n"
+    "  form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; color: #cad5e4; }\n"
     "  form input { background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #eee;\n"
     "               padding: 0.5rem 0.6rem; font-size: 0.95rem; }\n"
+    "  form select { background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #eee;\n"
+    "                padding: 0.5rem 0.6rem; font-size: 0.95rem; }\n"
     "  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }\n"
+    "  .row3 { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 0.7rem; }\n"
+    "  .hint { color: #8ea0b8; font-size: 0.86rem; }\n"
     "  button { background: #245; color: #fff; border: none; border-radius: 6px; padding: 0.6rem 1rem;\n"
     "            font-size: 1rem; cursor: pointer; }\n"
     "  button:hover { background: #357; }\n"
+    "  .ghost { background: #1a2533; border: 1px solid #304057; }\n"
+    "  .ghost:hover { background: #233246; }\n"
+    "  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }\n"
+    "  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }\n"
+    "  @media (max-width: 900px) { .layout, .split { grid-template-columns: 1fr; } .row2, .row3 { grid-template-columns: 1fr; } }\n"
     "</style>\n";
+
+constexpr const char* kJsHelpers =
+    "<script>\n"
+    "let lineDrawState = 0;\n"
+    "function el(id) { return document.getElementById(id); }\n"
+    "function setField(id, value) { const node = el(id); if (node && value !== '') { node.value = value; redrawPreview(); } }\n"
+    "function syncPreset(selectId, fieldId) { const sel = el(selectId); const field = el(fieldId); if (!sel || !field) return;\n"
+    "  if (sel.value !== '__custom__') { field.value = sel.value; redrawPreview(); } }\n"
+    "function numValue(id) { const node = el(id); return node ? Number.parseFloat(node.value || '0') : 0; }\n"
+    "function syncCanvasSize() { const img = el('preview-image'); const canvas = el('line-canvas'); if (!img || !canvas) return;\n"
+    "  const rect = img.getBoundingClientRect();\n"
+    "  canvas.width = Math.max(1, Math.round(rect.width)); canvas.height = Math.max(1, Math.round(rect.height));\n"
+    "  canvas.style.width = rect.width + 'px'; canvas.style.height = rect.height + 'px'; }\n"
+    "function redrawPreview() { const img = el('preview-image'); const canvas = el('line-canvas'); if (!img || !canvas) return;\n"
+    "  syncCanvasSize(); const ctx = canvas.getContext('2d'); if (!ctx) return; ctx.clearRect(0, 0, canvas.width, canvas.height);\n"
+    "  const iw = img.naturalWidth || canvas.width; const ih = img.naturalHeight || canvas.height; if (!iw || !ih) return;\n"
+    "  const sx = canvas.width / iw; const sy = canvas.height / ih;\n"
+    "  const x1 = numValue('line_x1') * sx, y1 = numValue('line_y1') * sy, x2 = numValue('line_x2') * sx, y2 = numValue('line_y2') * sy;\n"
+    "  ctx.save(); ctx.lineWidth = 3; ctx.strokeStyle = '#7dff9e'; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8;\n"
+    "  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();\n"
+    "  const drawHandle = (x, y, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#0b0f15'; ctx.stroke(); };\n"
+    "  drawHandle(x1, y1, '#ffd166'); drawHandle(x2, y2, '#00d4ff'); ctx.restore();\n"
+    "  const label = el('preview-label'); if (label) { label.textContent = lineDrawState === 1 ? 'Clique no segundo ponto da linha' : 'Clique em dois pontos para desenhar'; }\n"
+    "}\n"
+    "function installPreview() { const img = el('preview-image'); const canvas = el('line-canvas'); if (!img || !canvas) return;\n"
+    "  const onResize = () => redrawPreview(); window.addEventListener('resize', onResize); img.addEventListener('load', redrawPreview);\n"
+    "  canvas.addEventListener('click', (ev) => { const rect = canvas.getBoundingClientRect(); const iw = img.naturalWidth || rect.width; const ih = img.naturalHeight || rect.height;\n"
+    "    const x = Math.max(0, Math.min(iw, ((ev.clientX - rect.left) / rect.width) * iw));\n"
+    "    const y = Math.max(0, Math.min(ih, ((ev.clientY - rect.top) / rect.height) * ih));\n"
+    "    if (lineDrawState === 0) { setField('line_x1', x.toFixed(1)); setField('line_y1', y.toFixed(1)); setField('line_x2', x.toFixed(1)); setField('line_y2', y.toFixed(1)); lineDrawState = 1; }\n"
+    "    else { setField('line_x2', x.toFixed(1)); setField('line_y2', y.toFixed(1)); lineDrawState = 0; } redrawPreview(); }); redrawPreview(); }\n"
+    "function resetLineToPreset() { lineDrawState = 0; redrawPreview(); }\n"
+    "document.addEventListener('DOMContentLoaded', installPreview);\n"
+    "</script>\n";
+
+const std::string kAttachedVideo = "D2_S20260807075348_E20260807080000.mp4";
+
+struct PresetOption {
+    std::string label;
+    std::string value;
+};
+
+std::vector<PresetOption> videoPresets() {
+    std::vector<PresetOption> items = {
+        {"Synthetic", "synthetic"},
+        {"Vídeo exemplo 181327--vv.mp4", "181327--vv.mp4"},
+        {"Vídeo exemplo 181349--vv.mp4", "181349--vv.mp4"},
+    };
+    if (std::filesystem::exists(kAttachedVideo)) {
+        items.push_back({"Vídeo anexado para teste", kAttachedVideo});
+    }
+    return items;
+}
+
+std::vector<PresetOption> vehicleModelPresets() {
+    std::vector<PresetOption> items = {
+        {"Modelo principal treinado localmente", "models/vehicles.onnx"},
+        {"Detector pré-treinado de veículos", "models/vehicles.onnx"},
+    };
+    return items;
+}
+
+std::vector<PresetOption> axleModelPresets() {
+    std::vector<PresetOption> items = {
+        {"Modelo de eixos padrão", "models/axles.onnx"},
+        {"Modelo de eixos pré-treinado", "models/axles.onnx"},
+    };
+    return items;
+}
 
 std::string htmlEscape(const std::string& s) {
     std::string out;
@@ -113,15 +200,40 @@ std::unordered_map<std::string, std::string> parseFormBody(const std::string& bo
 
 std::string textField(const char* name, const char* label, const std::string& value) {
     std::ostringstream out;
-    out << "<label>" << label << "<input type=\"text\" name=\"" << name << "\" value=\""
+    out << "<label>" << label << "<input id=\"" << name << "\" type=\"text\" name=\"" << name << "\" value=\""
         << htmlEscape(value) << "\"></label>\n";
+    return out.str();
+}
+
+std::string presetSelect(const char* select_id,
+                         const char* field_id,
+                         const char* label,
+                         const std::string& current,
+                         const std::vector<PresetOption>& options,
+                         const char* hint) {
+    std::ostringstream out;
+    out << "<label>" << label << "<select id=\"" << select_id << "\" onchange=\"syncPreset('"
+        << select_id << "', '" << field_id << "')\">";
+    out << "<option value=\"__custom__\">Personalizado</option>";
+    for (const auto& opt : options) {
+        out << "<option value=\"" << htmlEscape(opt.value) << "\"";
+        if (opt.value == current) {
+            out << " selected";
+        }
+        out << ">" << htmlEscape(opt.label) << "</option>";
+    }
+    out << "</select>";
+    if (hint != nullptr && *hint != '\0') {
+        out << "<span class=\"hint\">" << htmlEscape(hint) << "</span>";
+    }
+    out << "</label>\n";
     return out.str();
 }
 
 template <typename T>
 std::string numField(const char* name, const char* label, T value, const char* step = "any") {
     std::ostringstream out;
-    out << "<label>" << label << "<input type=\"number\" step=\"" << step << "\" name=\"" << name
+    out << "<label>" << label << "<input id=\"" << name << "\" type=\"number\" step=\"" << step << "\" name=\"" << name
         << "\" value=\"" << value << "\"></label>\n";
     return out.str();
 }
@@ -457,13 +569,15 @@ std::string StreamServer::renderDashboard() const {
     std::ostringstream html;
     html << "<!DOCTYPE html><html lang=\"pt-BR\"><head>"
          << "<meta charset=\"utf-8\"/><meta name=\"viewport\" "
-            "content=\"width=device-width, initial-scale=1\"/>"
-         << "<title>Contador de Eixos</title>"
-         << "<meta http-equiv=\"refresh\" content=\"3\">" << kBaseStyle << "</head><body>"
+                "content=\"width=device-width, initial-scale=1\"/>"
+            << "<title>Contador de Eixos</title>"
+            << "<meta http-equiv=\"refresh\" content=\"3\">" << kBaseStyle << kJsHelpers
+            << "</head><body>"
          << "<div class=\"wrap\">"
          << "<h1>Contador de Eixos</h1>"
-         << "<nav><a href=\"/\">Painel</a> &middot; <a href=\"/config\">Configuração</a> &middot; "
-            "<a href=\"/stream\">Stream</a></nav>";
+            << "<div class=\"nav\"><a href=\"/\">Painel</a><a href=\"/config\">Configuração</a>"
+                "<a href=\"/stream\">Stream ao vivo</a><a href=\"/api/status\">Status JSON</a>"
+                "<a href=\"/health\">Health</a></div>";
 
     if (controller_ == nullptr) {
         html << "<div class=\"card\"><p>Controller não conectado.</p></div>";
@@ -480,6 +594,8 @@ std::string StreamServer::renderDashboard() const {
              << "<p><span class=\"label\">Modelo (eixos):</span> "
              << (cfg.axle_enabled ? htmlEscape(cfg.axle_model_path) : std::string("(desativado)"))
              << "</p>"
+                 << "<p class=\"hint\">Use /config para trocar vídeo/modelos sem reiniciar. O vídeo "
+                     "anexado fica disponível como preset.</p>"
              << "<p><span class=\"label\">Veículos contados:</span> <span class=\"count\">"
              << st.vehicle_count << "</span></p>"
              << "<p><span class=\"label\">Eixos totais:</span> <span class=\"count\">"
@@ -505,49 +621,86 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
     std::ostringstream html;
     html << "<!DOCTYPE html><html lang=\"pt-BR\"><head>"
          << "<meta charset=\"utf-8\"/><meta name=\"viewport\" "
-            "content=\"width=device-width, initial-scale=1\"/>"
-         << "<title>Configuração — Contador de Eixos</title>" << kBaseStyle << "</head><body>"
+                "content=\"width=device-width, initial-scale=1\"/>"
+            << "<title>Configuração — Contador de Eixos</title>" << kBaseStyle << kJsHelpers
+            << "</head><body>"
          << "<div class=\"wrap\">"
          << "<h1>Configuração</h1>"
-         << "<nav><a href=\"/\">Painel</a> &middot; <a href=\"/config\">Configuração</a> &middot; "
-            "<a href=\"/stream\">Stream</a></nav>";
+            << "<div class=\"nav\"><a href=\"/\">Painel</a><a href=\"/config\">Configuração</a>"
+                "<a href=\"/stream\">Stream ao vivo</a><a href=\"/api/status\">Status JSON</a>"
+                "<a href=\"/health\">Health</a></div>";
 
     if (!message.empty()) {
-        html << "<p class=\"error\">" << htmlEscape(message) << "</p>";
+          html << "<p class=\"notice\">" << htmlEscape(message) << "</p>";
     }
 
-    html << "<form method=\"POST\" action=\"/config\" class=\"card\">"
-         << textField("source", "Fonte (RTSP / caminho de vídeo / 'synthetic')", cfg.source)
-         << textField("model_path", "Modelo de veículos (.onnx)", cfg.model_path)
-         << "<div class=\"row2\">" << numField("conf", "Confiança mínima", cfg.conf, "0.01")
-         << numField("nms", "IoU NMS", cfg.nms, "0.01") << "</div>"
-         << "<div class=\"row2\">" << numField("imgsz", "Tamanho letterbox", cfg.imgsz, "1")
-         << numField("threads", "Threads ORT", cfg.threads, "1") << "</div>"
-         << "<p class=\"label\">Linha virtual de contagem (x1,y1 → x2,y2)</p>"
-         << "<div class=\"row2\">" << numField("line_x1", "x1", cfg.line.p1.x, "1")
-         << numField("line_y1", "y1", cfg.line.p1.y, "1") << "</div>"
-         << "<div class=\"row2\">" << numField("line_x2", "x2", cfg.line.p2.x, "1")
-         << numField("line_y2", "y2", cfg.line.p2.y, "1") << "</div>"
-         << "<div class=\"row2\">"
-         << numField("reconnect_ms", "Reconexão RTSP (ms)", cfg.reconnect_ms, "1")
-         << numField("read_timeout_ms", "Timeout leitura (ms)", cfg.read_timeout_ms, "1")
-         << "</div>"
-         << "<hr/><h2 style=\"font-size:1.05rem;margin:0.5rem 0\">Estágio 2 — eixos por veículo</h2>"
-         << "<label class=\"label\"><input type=\"checkbox\" name=\"axle_enabled\" value=\"1\""
-         << (cfg.axle_enabled ? " checked" : "")
-         << "/> Habilitar detector de eixos no cruzamento</label>"
-         << textField("axle_model_path", "Modelo de eixos (.onnx)", cfg.axle_model_path)
-         << "<div class=\"row2\">" << numField("axle_conf", "Conf. eixos", cfg.axle_conf, "0.01")
-         << numField("axle_nms", "NMS eixos", cfg.axle_nms, "0.01") << "</div>"
-         << "<div class=\"row2\">" << numField("axle_imgsz", "Letterbox eixos", cfg.axle_imgsz, "1")
-         << numField("axle_crop_margin", "Margem do recorte (0–1)", cfg.axle_crop_margin, "0.01")
-         << "</div>"
-         << "<button type=\"submit\">Aplicar</button>"
-         << "</form>"
-         << "<p class=\"meta\">Alterações são aplicadas imediatamente (hot-reload, sem reiniciar o "
-            "processo) e salvas em disco. Fontes tipo arquivo de vídeo processam até o fim e "
-            "mostram o relatório no painel — sem encerrar o servidor.</p>"
-         << "</div></body></html>";
+     html << "<div class=\"layout\">"
+            << "<div class=\"split\">"
+            << "<div class=\"card\">"
+            << "<h2>Visualização ao vivo</h2>"
+            << "<div class=\"preview-stage\">"
+            << "<img id=\"preview-image\" src=\"/stream\" alt=\"Stream MJPEG\"/>"
+            << "<canvas id=\"line-canvas\"></canvas>"
+            << "</div>"
+            << "<div class=\"preview-hud\">"
+            << "<span class=\"chip\" id=\"preview-label\">Clique em dois pontos para desenhar</span>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"resetLineToPreset()\">Redesenhar linha</button>"
+            << "</div>"
+            << "<p class=\"hint\">Clique no preview em dois pontos para posicionar a linha virtual. O "
+                "overlay é desenhado sobre o stream em tempo real.</p>"
+            << "</div>"
+            << "<form method=\"POST\" action=\"/config\" class=\"card\" id=\"config-form\">"
+            << "<h2>Menu rápido</h2>"
+            << "<div class=\"row3\">"
+            << presetSelect("source_preset", "source", "Fonte rápida", cfg.source, videoPresets(),
+                                 "Inclui o vídeo anexado quando ele existe no workspace.")
+            << presetSelect("model_preset", "model_path", "Modelo de veículos", cfg.model_path,
+                                 vehicleModelPresets(), "Use os modelos ONNX pré-treinados como base.")
+            << presetSelect("axle_model_preset", "axle_model_path", "Modelo de eixos",
+                                 cfg.axle_model_path, axleModelPresets(),
+                                 "O estágio 2 continua ativo no cruzamento da linha.")
+            << "</div>"
+            << "<div class=\"actions\">"
+             << "<button type=\"button\" class=\"ghost\" onclick=\"setField('source', '" << kAttachedVideo
+            << "')\">Usar vídeo anexado</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"setField('source', 'synthetic')\">Synthetic</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"setField('model_path', 'models/vehicles.onnx')\">Modelo veículos</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"setField('axle_model_path', 'models/axles.onnx')\">Modelo eixos</button>"
+            << "</div>"
+            << "<p class=\"hint\">Escolha um preset ou edite os campos abaixo para um caminho customizado.</p>"
+            << textField("source", "Fonte (RTSP / caminho de vídeo / 'synthetic')", cfg.source)
+            << textField("model_path", "Modelo de veículos (.onnx)", cfg.model_path)
+            << "<div class=\"row2\">" << numField("conf", "Confiança mínima", cfg.conf, "0.01")
+            << numField("nms", "IoU NMS", cfg.nms, "0.01") << "</div>"
+            << "<div class=\"row2\">" << numField("imgsz", "Tamanho letterbox", cfg.imgsz, "1")
+            << numField("threads", "Threads ORT", cfg.threads, "1") << "</div>"
+            << "<p class=\"label\">Linha virtual de contagem (x1,y1 → x2,y2)</p>"
+            << "<div class=\"row2\">" << numField("line_x1", "x1", cfg.line.p1.x, "1")
+            << numField("line_y1", "y1", cfg.line.p1.y, "1") << "</div>"
+            << "<div class=\"row2\">" << numField("line_x2", "x2", cfg.line.p2.x, "1")
+            << numField("line_y2", "y2", cfg.line.p2.y, "1") << "</div>"
+            << "<div class=\"row2\">"
+            << numField("reconnect_ms", "Reconexão RTSP (ms)", cfg.reconnect_ms, "1")
+            << numField("read_timeout_ms", "Timeout leitura (ms)", cfg.read_timeout_ms, "1")
+            << "</div>"
+            << "<hr/><h2>Estágio 2 — eixos por veículo</h2>"
+            << "<label class=\"label\"><input type=\"checkbox\" name=\"axle_enabled\" value=\"1\""
+            << (cfg.axle_enabled ? " checked" : "")
+            << "/> Habilitar detector de eixos no cruzamento</label>"
+            << textField("axle_model_path", "Modelo de eixos (.onnx)", cfg.axle_model_path)
+            << "<div class=\"row2\">" << numField("axle_conf", "Conf. eixos", cfg.axle_conf, "0.01")
+            << numField("axle_nms", "NMS eixos", cfg.axle_nms, "0.01") << "</div>"
+            << "<div class=\"row2\">" << numField("axle_imgsz", "Letterbox eixos", cfg.axle_imgsz, "1")
+            << numField("axle_crop_margin", "Margem do recorte (0–1)", cfg.axle_crop_margin, "0.01")
+            << "</div>"
+            << "<button type=\"submit\">Aplicar e recarregar</button>"
+            << "</form>"
+            << "</div>"
+            << "</div>"
+            << "<p class=\"meta\">Alterações são aplicadas imediatamente (hot-reload, sem reiniciar o "
+                "processo) e salvas em disco. Fontes tipo arquivo de vídeo processam até o fim e "
+                "mostram o relatório no painel — sem encerrar o servidor.</p>"
+            << "</div></body></html>";
     return html.str();
 }
 

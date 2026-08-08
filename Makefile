@@ -43,13 +43,17 @@ KAGGLE_WHEELS_DIR ?= datasets/external/vehicle-wheel-detection
 AXLE_IMGSZ     ?= 224
 AXLE_EPOCHS    ?= 50
 VEHICLE_EPOCHS ?= 40
+BASE_WEIGHTS   ?= yolov8n.pt
+PRETRAINED_CACHE ?= models/pretrained_cache
 
 INSTALL_PREFIX ?= /opt/contador-eixo
 SERVICE_FILE   ?= contador-eixo.service
 
 .PHONY: help ort configure build run count clean distclean \
         venv-world validate train train-export dataset-from-video train-from-video \
-        fetch-axle-datasets train-axles train-vehicles \
+	fetch-axle-datasets train-axles train-vehicles \
+	download-pretrained download-vehicles download-axles \
+	train-axles-auto quick-setup \
         install-service uninstall-service status logs \
         tree
 
@@ -64,6 +68,8 @@ help: ## Mostra esta ajuda
 	@echo "  make validate VIDEO=video_teste.mp4 WORLD_CONF=0.12 SAVE_DATASET=1"
 	@echo "  make train-vehicles   # requer ROBOFLOW_API_KEY (opcional com --skip-roboflow)"
 	@echo "  make train-axles      # Zenodo + Roboflow (+ Kaggle se KAGGLE_WHEELS_DIR existir)"
+	@echo "  make download-vehicles / download-axles / download-pretrained"
+	@echo "  make quick-setup      # assistente interativo para testar com um vídeo local"
 
 # ---------------------------------------------------------------------------
 # ONNX Runtime
@@ -95,6 +101,7 @@ run: build ## Roda o pipeline (SOURCE/MODEL/PORT configuráveis)
 	$(BIN) \
 		--source "$(SOURCE)" \
 		--model "$(MODEL)" \
+		--axle-model "$(AXLE_MODEL)" \
 		--line "$(LINE)" \
 		--port $(PORT) \
 		--threads $(THREADS) \
@@ -107,6 +114,7 @@ count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make 
 	$(BIN) \
 		--source "$(VIDEO)" \
 		--model "$(MODEL)" \
+		--axle-model "$(AXLE_MODEL)" \
 		--line "$(LINE)" \
 		--port $(PORT) \
 		--threads $(THREADS) \
@@ -132,7 +140,7 @@ validate: ## Validador Zero-Shot (VIDEO=... WORLD_CONF=... SAVE_DATASET=0|1)
 
 train: ## Treina YOLOv8n via Roboflow e exporta models/vehicles.onnx (legado: treinar_modelo.py)
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv e instale deps (ultralytics, roboflow)"; exit 1)
-	$(VENV)/bin/python treinar_modelo.py
+	$(VENV)/bin/python treinar_modelo.py --base-weights "$(BASE_WEIGHTS)"
 
 train-export: ## Só reexporta ONNX a partir do best.pt já treinado
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv primeiro"; exit 1)
@@ -157,7 +165,8 @@ train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta 
 		--val-ratio $(VAL_RATIO) \
 		--epochs $(EPOCHS) \
 		--class-name vehicle \
-		--prompts car vehicle
+		--prompts car vehicle \
+		--base-weights "$(BASE_WEIGHTS)"
 
 fetch-axle-datasets: ## Baixa/converte Zenodo + Roboflow eixos (+ Kaggle se existir) sem treinar
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
@@ -171,12 +180,50 @@ train-axles: ## Monta dataset de eixos + treina YOLOv8n + exporta models/axles.o
 	$(VENV)/bin/python treinar_eixos.py \
 		--epochs $(AXLE_EPOCHS) \
 		--imgsz $(AXLE_IMGSZ) \
+		--base-weights "$(BASE_WEIGHTS)" \
 		--kaggle-dir "$(KAGGLE_WHEELS_DIR)" \
 		$(if $(wildcard $(KAGGLE_WHEELS_DIR)/.),,--skip-kaggle)
 
+train-axles-auto: ## Fluxo automático de eixos com base pré-treinado em cache quando existir
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python treinar_eixos.py \
+		--auto \
+		--epochs $(AXLE_EPOCHS) \
+		--imgsz $(AXLE_IMGSZ) \
+		--kaggle-dir "$(KAGGLE_WHEELS_DIR)" \
+		$(if $(wildcard $(KAGGLE_WHEELS_DIR)/.),,--skip-kaggle)
+
+quick-setup: ## Assistente interativo para testar com vídeo local
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python quick_setup.py
+
 train-vehicles: ## Merge Roboflow vehicles + dataset local + treina → models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_veiculos.py --epochs $(VEHICLE_EPOCHS)
+	$(VENV)/bin/python treinar_veiculos.py --epochs $(VEHICLE_EPOCHS) --base-weights "$(BASE_WEIGHTS)"
+
+download-pretrained: ## Menu interativo de modelos pré-treinados / cache local
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python download_pretrained_models.py --cache-root "$(PRETRAINED_CACHE)"
+
+download-vehicles: ## Roboflow vehicles-k83q3 → models/vehicles.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python download_pretrained_models.py \
+		--download-vehicle-pretrained \
+		--cache-root "$(PRETRAINED_CACHE)" \
+		--output models/vehicles.onnx \
+		--epochs $(VEHICLE_EPOCHS) \
+		--imgsz 640 \
+		--use-pretrained
+
+download-axles: ## Zenodo + Roboflow eixos → models/axles.onnx
+	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
+	$(VENV)/bin/python download_pretrained_models.py \
+		--download-axle-pretrained \
+		--cache-root "$(PRETRAINED_CACHE)" \
+		--output models/axles.onnx \
+		--epochs $(AXLE_EPOCHS) \
+		--imgsz $(AXLE_IMGSZ) \
+		--use-pretrained
 
 # ---------------------------------------------------------------------------
 # Systemd (Armbian)

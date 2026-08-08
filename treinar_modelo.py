@@ -51,6 +51,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=EPOCHS)
     p.add_argument("--imgsz", type=int, default=IMGSZ)
     p.add_argument("--batch", type=int, default=BATCH)
+    p.add_argument("--base-weights", default=BASE_WEIGHTS, help="Checkpoint base do YOLO")
     p.add_argument("--device", default="", help="cpu | 0 | 0,1 | ''=auto")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument(
@@ -132,7 +133,7 @@ def train(data_yaml: Path, args: argparse.Namespace) -> Path:
     """Treina YOLOv8n e retorna o caminho de weights/best.pt."""
     return mlc.train_yolo(
         data_yaml,
-        base_weights=BASE_WEIGHTS,
+        base_weights=args.base_weights,
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,

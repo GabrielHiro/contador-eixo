@@ -69,6 +69,7 @@ def parse_args() -> argparse.Namespace:
         help="Nome da classe única gravada em data.yaml (padrão: wheel)",
     )
     p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--base-weights", default=BASE_WEIGHTS, help="Checkpoint base do YOLO")
     p.add_argument(
         "--skip",
         type=int,
@@ -244,7 +245,7 @@ def main() -> int:
 
         best_pt = mlc.train_yolo(
             data_yaml,
-            base_weights=BASE_WEIGHTS,
+            base_weights=args.base_weights,
             epochs=args.epochs,
             imgsz=args.imgsz,
             batch=args.batch,
