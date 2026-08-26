@@ -27,6 +27,7 @@ struct HttpRequest {
  *   GET  /            — painel: estado do pipeline, contagem atual, link p/ stream
  *   GET  /config      — formulário de configuração (fonte, modelo, linha, thresholds...)
  *   POST /config      — aplica hot-reload via PipelineController e persiste em disco
+ *   POST /api/count   — processa um vídeo de um veículo e retorna a contagem em JSON
  *   GET  /api/status  — status do pipeline em JSON
  *   GET  /stream      — multipart/x-mixed-replace (MJPEG)
  *   GET  /health      — "ok"
@@ -59,6 +60,7 @@ private:
     void handleClient(int client_fd);
     void writeStream(int client_fd);
     void handleConfigPost(int client_fd, const std::string& body);
+    void handleCountPost(int client_fd, const std::string& body);
 
     std::string renderDashboard() const;
     std::string renderConfigForm(const PipelineConfig& cfg, const std::string& message) const;
@@ -83,6 +85,7 @@ private:
 
     PipelineController* controller_{nullptr};
     std::string config_path_;
+    std::mutex job_mutex_;
 };
 
 }  // namespace contador

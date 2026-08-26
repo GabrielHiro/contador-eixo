@@ -54,7 +54,8 @@ void printUsage(const char* argv0) {
         << "  --help\n"
         << "\n"
         << "Telas web (com o processo rodando): /  (painel) · /config (configuração, hot-reload)\n"
-        << "                                     /stream (MJPEG) · /api/status (JSON)\n";
+        << "                                     /stream (MJPEG) · /api/status (JSON)\n"
+        << "API de job: POST /api/count com {\"video\":\"arquivo.mp4\", ...config...}\n";
 }
 
 }  // namespace

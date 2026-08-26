@@ -1,0 +1,20 @@
+[Unit]
+Description=Interface web do Contador de Eixos
+After=contador-eixo.service
+Requires=contador-eixo.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/contador-eixo
+Environment=CONTADOR_API=http://127.0.0.1:8080/api/count
+Environment=CONTADOR_UI_PORT=8090
+ExecStart=/usr/bin/python3 /opt/contador-eixo/interface_service.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=contador-eixo-ui
+
+[Install]
+WantedBy=multi-user.target

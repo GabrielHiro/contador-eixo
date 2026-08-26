@@ -156,13 +156,7 @@ std::string jsonEscape(const std::string& s) {
     return out;
 }
 
-bool loadConfig(const std::string& path, PipelineConfig& cfg) {
-    bool ok = false;
-    const std::string text = readWholeFile(path, ok);
-    if (!ok) {
-        return false;
-    }
-
+bool loadConfigJson(const std::string& text, PipelineConfig& cfg) {
     loadString(text, "source", cfg.source);
     loadString(text, "model_path", cfg.model_path);
     loadFloat(text, "conf", cfg.conf);
@@ -188,6 +182,12 @@ bool loadConfig(const std::string& path, PipelineConfig& cfg) {
     loadFloat(text, "axle_crop_margin", cfg.axle_crop_margin);
 
     return true;
+}
+
+bool loadConfig(const std::string& path, PipelineConfig& cfg) {
+    bool ok = false;
+    const std::string text = readWholeFile(path, ok);
+    return ok && loadConfigJson(text, cfg);
 }
 
 bool saveConfig(const std::string& path, const PipelineConfig& cfg) {

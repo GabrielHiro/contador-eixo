@@ -49,7 +49,7 @@ PRETRAINED_CACHE ?= models/pretrained_cache
 INSTALL_PREFIX ?= /opt/contador-eixo
 SERVICE_FILE   ?= contador-eixo.service
 
-.PHONY: help ort configure build run count clean distclean \
+.PHONY: help ort configure build run count run-ui clean distclean \
         venv-world validate train train-export dataset-from-video train-from-video \
 	fetch-axle-datasets train-axles train-vehicles \
 	download-pretrained download-vehicles download-axles \
@@ -120,6 +120,9 @@ count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make 
 		--threads $(THREADS) \
 		--conf $(CONF) \
 		--once
+
+run-ui: ## Inicia a interface web cliente da API na porta 8090
+	python3 interface_service.py
 
 # ---------------------------------------------------------------------------
 # Python — YOLO-World
@@ -205,25 +208,21 @@ download-pretrained: ## Menu interativo de modelos pré-treinados / cache local
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
 	$(VENV)/bin/python download_pretrained_models.py --cache-root "$(PRETRAINED_CACHE)"
 
-download-vehicles: ## Roboflow vehicles-k83q3 → models/vehicles.onnx
+download-vehicles: ## Copia o ONNX embarcado de veículos → models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
 	$(VENV)/bin/python download_pretrained_models.py \
-		--download-vehicle-pretrained \
+		--copy-vehicle-bundled \
 		--cache-root "$(PRETRAINED_CACHE)" \
 		--output models/vehicles.onnx \
-		--epochs $(VEHICLE_EPOCHS) \
-		--imgsz 640 \
-		--use-pretrained
+		--device cpu
 
-download-axles: ## Zenodo + Roboflow eixos → models/axles.onnx
+download-axles: ## Copia o ONNX embarcado de eixos → models/axles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
 	$(VENV)/bin/python download_pretrained_models.py \
-		--download-axle-pretrained \
+		--copy-axle-bundled \
 		--cache-root "$(PRETRAINED_CACHE)" \
 		--output models/axles.onnx \
-		--epochs $(AXLE_EPOCHS) \
-		--imgsz $(AXLE_IMGSZ) \
-		--use-pretrained
+		--device cpu
 
 # ---------------------------------------------------------------------------
 # Systemd (Armbian)

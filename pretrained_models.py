@@ -93,6 +93,21 @@ class ModelCache:
 class PreTrainedModelManager:
     """Gerencia fontes públicas e export ONNX para o projeto contador-eixo."""
 
+    BUNDLED_MODELS: dict[str, dict[str, Any]] = {
+        "vehicles": {
+            "family": "vehicle",
+            "model_type": "bundled",
+            "source_path": Path("models/vehicles.onnx"),
+            "description": "ONNX já embarcado no repositório para o estágio 1",
+        },
+        "axles": {
+            "family": "axle",
+            "model_type": "bundled",
+            "source_path": Path("models/axles.onnx"),
+            "description": "ONNX já embarcado no repositório para o estágio 2",
+        },
+    }
+
     ROBOFLOW_MODELS: dict[str, dict[str, Any]] = {
         "vehicles-k83q3": {
             "family": "vehicle",
@@ -137,6 +152,8 @@ class PreTrainedModelManager:
 
     def list_available(self) -> list[dict[str, Any]]:
         available: list[dict[str, Any]] = []
+        for name, meta in self.BUNDLED_MODELS.items():
+            available.append({"name": name, **meta})
         for name, meta in self.ROBOFLOW_MODELS.items():
             available.append({"name": name, **meta})
         for name, meta in self.ZENODO_MODELS.items():
@@ -147,6 +164,7 @@ class PreTrainedModelManager:
 
     def _resolve_source(self, model_type: str, model_name: str) -> dict[str, Any]:
         catalog = {
+            "bundled": self.BUNDLED_MODELS,
             "roboflow": self.ROBOFLOW_MODELS,
             "zenodo": self.ZENODO_MODELS,
             "composite": self.COMPOSITE_MODELS,
@@ -174,6 +192,21 @@ class PreTrainedModelManager:
             version=meta.get("version"),
             model_format="yolov8",
         )
+
+    def _copy_bundled(self, model_name: str, output_path: Path) -> Path:
+        meta = self._resolve_source("bundled", model_name)
+        source = Path(meta["source_path"])
+        if not source.is_file():
+            raise FileNotFoundError(f"Modelo embarcado não encontrado: {source}")
+
+        output_path = Path(output_path)
+        if output_path.suffix.lower() != ".onnx":
+            output_path = output_path / source.name
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if source.resolve() != output_path.resolve():
+            shutil.copy2(source, output_path)
+        self.cache.store(output_path, "bundled", model_name)
+        return output_path
 
     def _build_axles_dataset(self, model_name: str, output_dir: Path) -> Path:
         meta = self._resolve_source("composite", model_name)
@@ -251,9 +284,12 @@ class PreTrainedModelManager:
         device: str = "",
         use_pretrained: bool = False,
     ) -> Path:
-        """Baixa a fonte pública e, se necessário, exporta um ONNX pronto."""
+        """Baixa a fonte pública ou copia o ONNX embarcado sem treinar."""
         output = Path(output_path)
         source_root = self.cache.entry_dir(model_type, model_name) / "source"
+
+        if model_type == "bundled":
+            return self._copy_bundled(model_name, output)
 
         if model_type == "roboflow":
             dataset = self._download_roboflow(model_name, source_root)
@@ -344,8 +380,10 @@ def _format_catalog_row(item: dict[str, Any]) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Baixa/valida/exporta modelos pré-treinados")
     parser.add_argument("--list", action="store_true", help="Lista fontes disponíveis")
-    parser.add_argument("--download-vehicle-pretrained", action="store_true")
-    parser.add_argument("--download-axle-pretrained", action="store_true")
+    parser.add_argument("--copy-vehicle-bundled", action="store_true", help="Copia models/vehicles.onnx do repositório")
+    parser.add_argument("--copy-axle-bundled", action="store_true", help="Copia models/axles.onnx do repositório")
+    parser.add_argument("--download-vehicle-pretrained", action="store_true", help="Alias legado: copia vehicles.onnx sem treinar")
+    parser.add_argument("--download-axle-pretrained", action="store_true", help="Alias legado: copia axles.onnx sem treinar")
     parser.add_argument("--model-type", choices=("roboflow", "zenodo", "composite"))
     parser.add_argument("--model-name")
     parser.add_argument("--output", type=Path, default=Path("models/pretrained_cache/output.onnx"))
@@ -371,12 +409,19 @@ def main() -> int:
     model_type = args.model_type
     model_name = args.model_name
 
+    if args.copy_vehicle_bundled:
+        model_type = "bundled"
+        model_name = "vehicles"
+    elif args.copy_axle_bundled:
+        model_type = "bundled"
+        model_name = "axles"
+
     if args.download_vehicle_pretrained:
-        model_type = "roboflow"
-        model_name = "vehicles-k83q3"
+        model_type = "bundled"
+        model_name = "vehicles"
     elif args.download_axle_pretrained:
-        model_type = "composite"
-        model_name = "axles-composite"
+        model_type = "bundled"
+        model_name = "axles"
 
     if not model_type or not model_name:
         print("Fontes disponíveis:")

@@ -29,6 +29,10 @@ venv/
 dist/
 # Logs locais
 *.log
+# Vídeos recebidos pela interface local
+/ui_jobs/
 # Artefatos de SO
 .DS_Store
 Thumbs.db
+models/pretrained_cache/*
+*.mp4

@@ -123,7 +123,21 @@ Abrir no navegador:
 | `http://<IP>:8080/config` | Formulário de configuração — aplica em tempo real (hot-reload) |
 | `http://<IP>:8080/stream` | MJPEG puro (`<img src="/stream">`) |
 | `http://<IP>:8080/api/status` | Status em JSON (scripts/monitoramento) |
+| `http://<IP>:8080/api/count` | `POST` JSON: processa um MP4 e retorna `vehicles`, `axles` e `state` |
 | `http://<IP>:8080/health` | `ok` (healthcheck) |
+
+A interface operacional fica em `http://<IP>:8090/`. Ela recebe o upload do vídeo do radar,
+permite configurar a linha, modelos e thresholds, mostra o vídeo enviado, quantidade de eixos,
+duração e uma estimativa da CPU média. A aba `Histórico` salva todos os jobs em SQLite em
+`ui_jobs/history.sqlite3`, incluindo a configuração usada, vídeo, resultado e erros; cada detalhe
+permite reproduzir o vídeo e excluir o registro. Para iniciar manualmente: `make run-ui`.
+Em produção, use `contador-eixo-ui.service` junto com `contador-eixo.service`.
+
+Na seção `Configuração da câmera`, escolha `Configuração manual` para criar uma configuração nova
+ou selecione um perfil existente. Informe um nome e use `Salvar configuração da câmera` para
+persisti-lo. O botão `Desenhar área no vídeo` abre o vídeo selecionado em um editor: clique em dois
+pontos para definir a linha; os quatro campos de coordenadas são preenchidos automaticamente e
+podem ser ajustados manualmente antes do processamento.
 
 ### Flags principais
 
@@ -158,6 +172,20 @@ Exemplo de **contagem em um arquivo de vídeo** (sem RTSP), com relatório e sa�
 # ou:
 make count VIDEO=181349--vv.mp4 MODEL=models/vehicles.onnx
 ```
+
+Para integrar como um serviço no estilo LPR, envie um job para o processo já iniciado. O vídeo
+deve estar em um caminho acessível ao processo; os demais campos do JSON sobrescrevem a configuração
+atual apenas para esse processamento:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/count \
+      -H 'Content-Type: application/json' \
+      -d '{"video":"videoDiaZoomMegaPixel1636x1220-07082025.mp4","line_x1":180,"line_y1":160,"line_x2":1100,"line_y2":620,"axle_conf":0.35}'
+```
+
+Resposta: `{"video":"...","vehicles":1,"axles":N,"frames":...,"state":"finished"}`.
+O endpoint serializa os jobs e aguarda o fim do MP4 antes de responder. O contrato pressupõe um
+veículo por vídeo, como nos arquivos gerados pelo radar.
 
 Sem `--once`, o mesmo comando processa o vídeo até o fim, mostra "EIXOS: N" sobreposto no último
 frame publicado em `/stream`, e o painel `/` mostra estado `finished` com a contagem total — o

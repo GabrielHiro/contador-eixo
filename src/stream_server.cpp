@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -33,7 +34,7 @@ constexpr const char* kBaseStyle =
     "  .nav a { color: #d8e7ff; text-decoration: none; background: #172030; border: 1px solid #2b3b53;\n"
     "           border-radius: 999px; padding: 0.45rem 0.8rem; }\n"
     "  .nav a:hover { background: #213149; }\n"
-    "  .layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1rem; align-items: start; }\n"
+    "  .layout { display: flex; flex-direction: column; gap: 1rem; }\n"
     "  .card { background: rgba(13, 19, 29, 0.92); border: 1px solid #273244; border-radius: 14px; padding: 1.1rem 1.2rem; box-shadow: 0 12px 32px rgba(0,0,0,0.18); }\n"
     "  .card p { margin: 0.35rem 0; }\n"
     "  .label { color: #999; }\n"
@@ -49,11 +50,15 @@ constexpr const char* kBaseStyle =
     "  .badge-stopped { background: #2a2a2a; color: #aaa; }\n"
     "  .badge-idle { background: #2a2a2a; color: #aaa; }\n"
     "  .preview { width: 100%; max-width: 100%; border: 1px solid #304057; border-radius: 12px; background: #0b0f15; }\n"
-    "  .preview-stage { position: relative; width: 100%; border: 1px solid #304057; border-radius: 12px; overflow: hidden; background: #0b0f15; }\n"
-    "  .preview-stage img { display: block; width: 100%; height: auto; }\n"
-    "  .preview-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }\n"
+    "  .preview-stage { position: relative; width: 100%; min-height: 68vh; border: 1px solid #304057; border-radius: 16px; overflow: hidden; background: #0b0f15; }\n"
+    "  .preview-stage img { display: block; width: 100%; height: 100%; object-fit: contain; }\n"
+    "  .preview-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }\n"
     "  .preview-hud { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }\n"
     "  .chip { display: inline-flex; align-items: center; gap: 0.35rem; border-radius: 999px; padding: 0.3rem 0.6rem; background: #152233; border: 1px solid #2d415c; color: #d8e7ff; font-size: 0.86rem; }\n"
+    "  .editor-card { display: flex; flex-direction: column; gap: 0.85rem; }\n"
+    "  .editor-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }\n"
+    "  .editor-toolbar .ghost { padding: 0.5rem 0.8rem; }\n"
+    "  .editor-toolbar select { min-width: 220px; }\n"
     "  .meta { color: #777; font-size: 0.85rem; }\n"
     "  form.card { display: flex; flex-direction: column; gap: 0.7rem; }\n"
     "  form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; color: #cad5e4; }\n"
@@ -79,9 +84,15 @@ constexpr const char* kJsHelpers =
     "let lineDrawState = 0;\n"
     "function el(id) { return document.getElementById(id); }\n"
     "function setField(id, value) { const node = el(id); if (node && value !== '') { node.value = value; redrawPreview(); } }\n"
+    "function normalizeNumericValue(value) { let text = String(value ?? '').trim().replace(/\\s+/g, '');\n"
+    "  if (!text) return ''; if (text.includes(',') && text.includes('.')) {\n"
+    "    if (text.lastIndexOf(',') > text.lastIndexOf('.')) { text = text.replace(/\\./g, '').replace(/,/g, '.'); }\n"
+    "    else { text = text.replace(/,/g, ''); } } else { text = text.replace(/,/g, '.'); } return text; }\n"
+    "function normalizeNumericField(node) { if (!node) return; const next = normalizeNumericValue(node.value); if (next !== '') node.value = next; }\n"
+    "function normalizeForm(form) { if (!form) return; form.querySelectorAll('[data-num-kind]').forEach((node) => normalizeNumericField(node)); }\n"
     "function syncPreset(selectId, fieldId) { const sel = el(selectId); const field = el(fieldId); if (!sel || !field) return;\n"
     "  if (sel.value !== '__custom__') { field.value = sel.value; redrawPreview(); } }\n"
-    "function numValue(id) { const node = el(id); return node ? Number.parseFloat(node.value || '0') : 0; }\n"
+    "function numValue(id) { const node = el(id); return node ? Number.parseFloat(normalizeNumericValue(node.value || '0')) || 0 : 0; }\n"
     "function syncCanvasSize() { const img = el('preview-image'); const canvas = el('line-canvas'); if (!img || !canvas) return;\n"
     "  const rect = img.getBoundingClientRect();\n"
     "  canvas.width = Math.max(1, Math.round(rect.width)); canvas.height = Math.max(1, Math.round(rect.height));\n"
@@ -102,9 +113,10 @@ constexpr const char* kJsHelpers =
     "  canvas.addEventListener('click', (ev) => { const rect = canvas.getBoundingClientRect(); const iw = img.naturalWidth || rect.width; const ih = img.naturalHeight || rect.height;\n"
     "    const x = Math.max(0, Math.min(iw, ((ev.clientX - rect.left) / rect.width) * iw));\n"
     "    const y = Math.max(0, Math.min(ih, ((ev.clientY - rect.top) / rect.height) * ih));\n"
-    "    if (lineDrawState === 0) { setField('line_x1', x.toFixed(1)); setField('line_y1', y.toFixed(1)); setField('line_x2', x.toFixed(1)); setField('line_y2', y.toFixed(1)); lineDrawState = 1; }\n"
-    "    else { setField('line_x2', x.toFixed(1)); setField('line_y2', y.toFixed(1)); lineDrawState = 0; } redrawPreview(); }); redrawPreview(); }\n"
+    "    if (lineDrawState === 0) { setField('line_x1', x.toFixed(2)); setField('line_y1', y.toFixed(2)); setField('line_x2', x.toFixed(2)); setField('line_y2', y.toFixed(2)); lineDrawState = 1; }\n"
+    "    else { setField('line_x2', x.toFixed(2)); setField('line_y2', y.toFixed(2)); lineDrawState = 0; } redrawPreview(); }); redrawPreview(); }\n"
     "function resetLineToPreset() { lineDrawState = 0; redrawPreview(); }\n"
+    "function zoomPreview(scale) { const stage = el('preview-stage'); if (!stage) return; stage.style.minHeight = Math.max(420, Math.round(window.innerHeight * scale)) + 'px'; redrawPreview(); }\n"
     "document.addEventListener('DOMContentLoaded', installPreview);\n"
     "</script>\n";
 
@@ -198,6 +210,23 @@ std::unordered_map<std::string, std::string> parseFormBody(const std::string& bo
     return fields;
 }
 
+std::string jsonStringField(const std::string& json, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t key_pos = json.find(needle);
+    if (key_pos == std::string::npos) return {};
+    const size_t colon = json.find(':', key_pos + needle.size());
+    if (colon == std::string::npos) return {};
+    const size_t quote = json.find('\"', colon + 1);
+    if (quote == std::string::npos) return {};
+    std::string value;
+    for (size_t i = quote + 1; i < json.size(); ++i) {
+        if (json[i] == '\"') return value;
+        if (json[i] == '\\' && i + 1 < json.size()) ++i;
+        value += json[i];
+    }
+    return {};
+}
+
 std::string textField(const char* name, const char* label, const std::string& value) {
     std::ostringstream out;
     out << "<label>" << label << "<input id=\"" << name << "\" type=\"text\" name=\"" << name << "\" value=\""
@@ -233,8 +262,11 @@ std::string presetSelect(const char* select_id,
 template <typename T>
 std::string numField(const char* name, const char* label, T value, const char* step = "any") {
     std::ostringstream out;
-    out << "<label>" << label << "<input id=\"" << name << "\" type=\"number\" step=\"" << step << "\" name=\"" << name
-        << "\" value=\"" << value << "\"></label>\n";
+    const bool is_integer = std::string(step) == "1";
+    out << "<label>" << label << "<input id=\"" << name
+        << "\" type=\"text\" name=\"" << name << "\" inputmode=\""
+        << (is_integer ? "numeric" : "decimal") << "\" data-num-kind=\""
+        << (is_integer ? "int" : "float") << "\" value=\"" << value << "\"></label>\n";
     return out.str();
 }
 
@@ -464,6 +496,17 @@ void StreamServer::handleClient(int client_fd) {
         return;
     }
 
+    if (req.path == "/api/count") {
+        if (req.method != "POST") {
+            const std::string resp = buildHttpResponse(405, "text/plain", "use POST\n");
+            sendAll(client_fd, resp.data(), resp.size());
+            ::close(client_fd);
+            return;
+        }
+        handleCountPost(client_fd, req.body);
+        return;
+    }
+
     if (req.path == "/stream") {
         writeStream(client_fd);
         ::close(client_fd);
@@ -475,9 +518,127 @@ void StreamServer::handleClient(int client_fd) {
     ::close(client_fd);
 }
 
+void StreamServer::handleCountPost(int client_fd, const std::string& body) {
+    std::lock_guard<std::mutex> job_lock(job_mutex_);
+    PipelineConfig cfg = controller_ != nullptr ? controller_->config() : PipelineConfig{};
+    const std::string video = jsonStringField(body, "video");
+    if (!video.empty()) cfg.source = video;
+    if (video.empty() || !loadConfigJson(body, cfg) || controller_ == nullptr) {
+        const std::string resp = buildHttpResponse(
+            400, "application/json", "{\"error\":\"JSON deve conter video e configuracao valida\"}\n");
+        sendAll(client_fd, resp.data(), resp.size());
+        ::close(client_fd);
+        return;
+    }
+    cfg.source = video;
+    cfg.axle_enabled = true;
+
+    const PipelineState previous_state = controller_->status().state;
+    controller_->reconfigure(cfg);
+    bool started = false;
+    for (int i = 0; i < 600; ++i) {
+        const auto st = controller_->status();
+        if (controller_->config().source == video &&
+            ((st.state == PipelineState::Running && previous_state != PipelineState::Running) ||
+             (st.state == PipelineState::Error && previous_state != PipelineState::Error))) {
+            started = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!started) {
+        const std::string resp = buildHttpResponse(
+            504, "application/json", "{\"error\":\"tempo excedido ao iniciar o processamento\"}\n");
+        sendAll(client_fd, resp.data(), resp.size());
+        ::close(client_fd);
+        return;
+    }
+    while (running_.load()) {
+        const auto st = controller_->status();
+        if (st.state == PipelineState::Finished || st.state == PipelineState::Error) {
+            std::ostringstream json;
+            json << "{\"video\":\"" << jsonEscape(st.source) << "\",\"vehicles\":"
+                 << st.vehicle_count << ",\"axles\":" << st.axle_count
+                 << ",\"frames\":" << st.frames_processed << ",\"state\":\""
+                 << toString(st.state) << "\"";
+            if (!st.error_message.empty()) {
+                json << ",\"error\":\"" << jsonEscape(st.error_message) << "\"";
+            }
+            json << "}\n";
+            const std::string resp = buildHttpResponse(
+                st.state == PipelineState::Error ? 422 : 200, "application/json", json.str());
+            sendAll(client_fd, resp.data(), resp.size());
+            ::close(client_fd);
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    ::close(client_fd);
+}
+
 void StreamServer::handleConfigPost(int client_fd, const std::string& body) {
     const auto fields = parseFormBody(body);
     PipelineConfig cfg = controller_ != nullptr ? controller_->config() : PipelineConfig{};
+
+    auto trimCopy = [](std::string value) {
+        const auto first = value.find_first_not_of(" \t\r\n");
+        const auto last = value.find_last_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            return std::string{};
+        }
+        return value.substr(first, last - first + 1);
+    };
+
+    auto normalizeNumeric = [&](std::string value) {
+        value = trimCopy(std::move(value));
+        value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char c) {
+                          return std::isspace(c) != 0 || c == '_';
+                      }),
+                    value.end());
+        if (value.empty()) {
+            return value;
+        }
+        const auto comma = value.find_last_of(',');
+        const auto dot = value.find_last_of('.');
+        if (comma != std::string::npos && dot != std::string::npos) {
+            if (comma > dot) {
+                value.erase(std::remove(value.begin(), value.end(), '.'), value.end());
+                std::replace(value.begin(), value.end(), ',', '.');
+            } else {
+                value.erase(std::remove(value.begin(), value.end(), ','), value.end());
+            }
+        } else {
+            std::replace(value.begin(), value.end(), ',', '.');
+        }
+        return value;
+    };
+
+    auto parseFloat = [&](const char* key, float& target) {
+        const auto it = fields.find(key);
+        if (it == fields.end()) {
+            return true;
+        }
+        try {
+            target = std::stof(normalizeNumeric(it->second));
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    auto parseInt = [&](const char* key, int& target) {
+        const auto it = fields.find(key);
+        if (it == fields.end()) {
+            return true;
+        }
+        try {
+            const double parsed = std::stod(normalizeNumeric(it->second));
+            target = static_cast<int>(std::lround(parsed));
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
 
     auto getStr = [&](const char* key, std::string& target) {
         const auto it = fields.find(key);
@@ -486,41 +647,16 @@ void StreamServer::handleConfigPost(int client_fd, const std::string& body) {
         }
     };
     bool ok = true;
-    auto getFloat = [&](const char* key, float& target) {
-        const auto it = fields.find(key);
-        if (it == fields.end()) {
-            return;
-        }
-        try {
-            target = std::stof(it->second);
-        } catch (...) {
-            ok = false;
-        }
-    };
-    auto getInt = [&](const char* key, int& target) {
-        const auto it = fields.find(key);
-        if (it == fields.end()) {
-            return;
-        }
-        try {
-            target = std::stoi(it->second);
-        } catch (...) {
-            ok = false;
-        }
-    };
-
-    getStr("source", cfg.source);
-    getStr("model_path", cfg.model_path);
-    getFloat("conf", cfg.conf);
-    getFloat("nms", cfg.nms);
-    getInt("imgsz", cfg.imgsz);
-    getInt("threads", cfg.threads);
-    getFloat("line_x1", cfg.line.p1.x);
-    getFloat("line_y1", cfg.line.p1.y);
-    getFloat("line_x2", cfg.line.p2.x);
-    getFloat("line_y2", cfg.line.p2.y);
-    getInt("reconnect_ms", cfg.reconnect_ms);
-    getInt("read_timeout_ms", cfg.read_timeout_ms);
+    ok &= parseFloat("conf", cfg.conf);
+    ok &= parseFloat("nms", cfg.nms);
+    ok &= parseInt("imgsz", cfg.imgsz);
+    ok &= parseInt("threads", cfg.threads);
+    ok &= parseFloat("line_x1", cfg.line.p1.x);
+    ok &= parseFloat("line_y1", cfg.line.p1.y);
+    ok &= parseFloat("line_x2", cfg.line.p2.x);
+    ok &= parseFloat("line_y2", cfg.line.p2.y);
+    ok &= parseInt("reconnect_ms", cfg.reconnect_ms);
+    ok &= parseInt("read_timeout_ms", cfg.read_timeout_ms);
 
     {
         const auto it = fields.find("axle_enabled");
@@ -532,11 +668,13 @@ void StreamServer::handleConfigPost(int client_fd, const std::string& body) {
             cfg.axle_enabled = false;
         }
     }
+    getStr("source", cfg.source);
+    getStr("model_path", cfg.model_path);
     getStr("axle_model_path", cfg.axle_model_path);
-    getFloat("axle_conf", cfg.axle_conf);
-    getFloat("axle_nms", cfg.axle_nms);
-    getInt("axle_imgsz", cfg.axle_imgsz);
-    getFloat("axle_crop_margin", cfg.axle_crop_margin);
+    ok &= parseFloat("axle_conf", cfg.axle_conf);
+    ok &= parseFloat("axle_nms", cfg.axle_nms);
+    ok &= parseInt("axle_imgsz", cfg.axle_imgsz);
+    ok &= parseFloat("axle_crop_margin", cfg.axle_crop_margin);
 
     if (!ok || cfg.source.empty() || cfg.model_path.empty()) {
         const std::string resp = buildHttpResponse(
@@ -635,21 +773,24 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
     }
 
      html << "<div class=\"layout\">"
-            << "<div class=\"split\">"
-            << "<div class=\"card\">"
+            << "<div class=\"card editor-card\">"
             << "<h2>Visualização ao vivo</h2>"
-            << "<div class=\"preview-stage\">"
+            << "<div class=\"editor-toolbar\">"
+            << "<span class=\"chip\" id=\"preview-label\">Clique em dois pontos para desenhar</span>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"resetLineToPreset()\">Redesenhar linha</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"zoomPreview(0.62)\">Ampliar</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"zoomPreview(0.78)\">Muito amplo</button>"
+            << "<button type=\"button\" class=\"ghost\" onclick=\"zoomPreview(0.90)\">Tela quase cheia</button>"
+            << "</div>"
+            << "<div class=\"preview-stage\" id=\"preview-stage\">"
             << "<img id=\"preview-image\" src=\"/stream\" alt=\"Stream MJPEG\"/>"
             << "<canvas id=\"line-canvas\"></canvas>"
             << "</div>"
-            << "<div class=\"preview-hud\">"
-            << "<span class=\"chip\" id=\"preview-label\">Clique em dois pontos para desenhar</span>"
-            << "<button type=\"button\" class=\"ghost\" onclick=\"resetLineToPreset()\">Redesenhar linha</button>"
-            << "</div>"
             << "<p class=\"hint\">Clique no preview em dois pontos para posicionar a linha virtual. O "
-                "overlay é desenhado sobre o stream em tempo real.</p>"
+                "overlay é desenhado sobre o stream em tempo real. Se quiser, use os botões de zoom para "
+                "deixar a imagem maior antes de marcar o trigger.</p>"
             << "</div>"
-            << "<form method=\"POST\" action=\"/config\" class=\"card\" id=\"config-form\">"
+            << "<form method=\"POST\" action=\"/config\" class=\"card\" id=\"config-form\" onsubmit=\"normalizeForm(this)\">"
             << "<h2>Menu rápido</h2>"
             << "<div class=\"row3\">"
             << presetSelect("source_preset", "source", "Fonte rápida", cfg.source, videoPresets(),
@@ -675,10 +816,10 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
             << "<div class=\"row2\">" << numField("imgsz", "Tamanho letterbox", cfg.imgsz, "1")
             << numField("threads", "Threads ORT", cfg.threads, "1") << "</div>"
             << "<p class=\"label\">Linha virtual de contagem (x1,y1 → x2,y2)</p>"
-            << "<div class=\"row2\">" << numField("line_x1", "x1", cfg.line.p1.x, "1")
-            << numField("line_y1", "y1", cfg.line.p1.y, "1") << "</div>"
-            << "<div class=\"row2\">" << numField("line_x2", "x2", cfg.line.p2.x, "1")
-            << numField("line_y2", "y2", cfg.line.p2.y, "1") << "</div>"
+            << "<div class=\"row2\">" << numField("line_x1", "x1", cfg.line.p1.x, "0.01")
+            << numField("line_y1", "y1", cfg.line.p1.y, "0.01") << "</div>"
+            << "<div class=\"row2\">" << numField("line_x2", "x2", cfg.line.p2.x, "0.01")
+            << numField("line_y2", "y2", cfg.line.p2.y, "0.01") << "</div>"
             << "<div class=\"row2\">"
             << numField("reconnect_ms", "Reconexão RTSP (ms)", cfg.reconnect_ms, "1")
             << numField("read_timeout_ms", "Timeout leitura (ms)", cfg.read_timeout_ms, "1")
@@ -695,8 +836,6 @@ std::string StreamServer::renderConfigForm(const PipelineConfig& cfg,
             << "</div>"
             << "<button type=\"submit\">Aplicar e recarregar</button>"
             << "</form>"
-            << "</div>"
-            << "</div>"
             << "<p class=\"meta\">Alterações são aplicadas imediatamente (hot-reload, sem reiniciar o "
                 "processo) e salvas em disco. Fontes tipo arquivo de vídeo processam até o fim e "
                 "mostram o relatório no painel — sem encerrar o servidor.</p>"

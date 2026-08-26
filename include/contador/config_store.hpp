@@ -40,6 +40,9 @@ struct PipelineConfig {
  */
 bool loadConfig(const std::string& path, PipelineConfig& cfg);
 
+/** Carrega a mesma configuração diretamente de um JSON plano em memória. */
+bool loadConfigJson(const std::string& json, PipelineConfig& cfg);
+
 /** Persiste `cfg` em JSON simples e legível. @return true em caso de sucesso. */
 bool saveConfig(const std::string& path, const PipelineConfig& cfg);
 
