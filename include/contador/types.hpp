@@ -21,6 +21,8 @@ struct Track {
     int age{0};
     int missed{0};
     bool counted{false};
+    int class_id{0};
+    std::string label{"vehicle"};
 };
 
 struct CountLine {

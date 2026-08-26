@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <stdexcept>
+#include <set>
 
 namespace contador {
 namespace {
@@ -36,8 +37,9 @@ ParsedOutput inferLayout(const std::vector<int64_t>& shape) {
     const int64_t a = shape[1];
     const int64_t b = shape[2];
 
-    // Se a dimensão do meio é pequena (< 64), é típico [1, 4+nc, N]
-    if (a < b && a < 64) {
+    // A saída channels-first pode ter 84 atributos no COCO (4 caixas + 80
+    // classes), portanto o limite precisa cobrir modelos multiclasses.
+    if (a < b && a <= 256) {
         p.layout = YoloLayout::kChannelsFirst;
         p.num_attrs = a;
         p.num_preds = b;
@@ -283,7 +285,30 @@ struct Detector::Impl {
         }
 
         std::vector<int> keep;
-        cv::dnn::NMSBoxes(boxes, scores, conf_threshold, nms_threshold, keep);
+        // NMS global faria uma caixa de caminhão suprimir uma caixa de moto
+        // sobreposta; em um modelo multiclasses, a supressão é por classe.
+        std::set<int> processed_classes;
+        for (int class_id : class_ids) {
+            if (!processed_classes.insert(class_id).second) {
+                continue;
+            }
+            std::vector<cv::Rect> class_boxes;
+            std::vector<float> class_scores;
+            std::vector<int> source_indices;
+            for (size_t i = 0; i < boxes.size(); ++i) {
+                if (class_ids[i] == class_id) {
+                    class_boxes.push_back(boxes[i]);
+                    class_scores.push_back(scores[i]);
+                    source_indices.push_back(static_cast<int>(i));
+                }
+            }
+            std::vector<int> class_keep;
+            cv::dnn::NMSBoxes(class_boxes, class_scores, conf_threshold, nms_threshold,
+                             class_keep);
+            for (int index : class_keep) {
+                keep.push_back(source_indices[static_cast<size_t>(index)]);
+            }
+        }
 
         std::vector<Detection> out;
         out.reserve(keep.size());

@@ -76,6 +76,8 @@ int TrackerCounter::update(const std::vector<Detection>& detections,
         const cv::Point2f prev = t.centroid;
         t.centroid = detections[c.di].centroid;
         t.box = detections[c.di].box;
+        t.class_id = detections[c.di].class_id;
+        t.label = detections[c.di].label;
         t.age += 1;
         t.missed = 0;
 
@@ -84,7 +86,7 @@ int TrackerCounter::update(const std::vector<Detection>& detections,
             ++total_count_;
             ++newly_counted;
             if (crossings != nullptr) {
-                crossings->push_back(CrossingEvent{t.id, t.box});
+                crossings->push_back(CrossingEvent{t.id, t.box, t.class_id, t.label});
             }
         }
         prev_centroids_[t.id] = t.centroid;
@@ -116,6 +118,8 @@ int TrackerCounter::update(const std::vector<Detection>& detections,
         t.age = 1;
         t.missed = 0;
         t.counted = false;
+        t.class_id = detections[di].class_id;
+        t.label = detections[di].label;
         tracks_.push_back(t);
         prev_centroids_[t.id] = t.centroid;
     }
@@ -142,6 +146,9 @@ void TrackerCounter::drawOverlay(cv::Mat& frame, int axle_count) const {
              cv::Scalar(0, 0, 255), 3);
 
     for (const auto& t : tracks_) {
+        if (t.age < 2) {
+            continue;
+        }
         const cv::Scalar color = t.counted ? cv::Scalar(0, 200, 0) : cv::Scalar(0, 220, 255);
         cv::rectangle(frame, t.box, color, 2);
         cv::circle(frame, t.centroid, 4, color, cv::FILLED);

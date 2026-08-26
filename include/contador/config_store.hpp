@@ -13,6 +13,7 @@ namespace contador {
  */
 struct PipelineConfig {
     std::string source{"synthetic"};
+    std::string output_path{};
     std::string model_path{"models/vehicles.onnx"};
     float conf{0.45f};
     float nms{0.45f};
@@ -30,6 +31,19 @@ struct PipelineConfig {
     float axle_nms{0.45f};
     int axle_imgsz{224};
     float axle_crop_margin{0.15f};
+
+    // YOLO26s customizado: light_vehicle, motorcycle, truck por padrão.
+    std::string vehicle_class_names{"vehicle"};
+    std::string vehicle_class_filter{};
+    int light_vehicle_class_id{2};
+    int motorcycle_class_id{3};
+    int truck_class_id{7};
+    int truck_axles_override{7};
+    int light_vehicle_axles{2};
+    int motorcycle_axles{2};
+    int wheel_class_id{0};
+    float axle_group_distance{0.12f};
+    bool single_vehicle_mode{false};
 };
 
 /**

@@ -126,7 +126,9 @@ Abrir no navegador:
 | `http://<IP>:8080/api/count` | `POST` JSON: processa um MP4 e retorna `vehicles`, `axles` e `state` |
 | `http://<IP>:8080/health` | `ok` (healthcheck) |
 
-A interface operacional fica em `http://<IP>:8090/`. Ela recebe o upload do vídeo do radar,
+A interface operacional fica em `http://<IP>:8090/`. Ela possui as páginas `Vídeo` e `Imagem`: a
+página de imagem processa um veículo isolado sem tracker e mostra sua caixa, confiança, caixas de
+eixos e total detectado. A página de vídeo recebe o upload do vídeo do radar,
 permite configurar a linha, modelos e thresholds, mostra o vídeo enviado, quantidade de eixos,
 duração e uma estimativa da CPU média. A aba `Histórico` salva todos os jobs em SQLite em
 `ui_jobs/history.sqlite3`, incluindo a configuração usada, vídeo, resultado e erros; cada detalhe
@@ -186,6 +188,26 @@ curl -X POST http://127.0.0.1:8080/api/count \
 Resposta: `{"video":"...","vehicles":1,"axles":N,"frames":...,"state":"finished"}`.
 O endpoint serializa os jobs e aguarda o fim do MP4 antes de responder. O contrato pressupõe um
 veículo por vídeo, como nos arquivos gerados pelo radar.
+
+### Pipeline YOLO26s
+
+O pipeline suporta o modelo customizado multiclasses com a ordem `light_vehicle,motorcycle,truck`
+no detector de veículos. Leves e motos usam a regra direta configurada (padrão: 2 eixos). Para
+caminhões, a caixa rastreada vira ROI, o segundo YOLO26s detecta rodas e o estimador agrupa as
+rodas pela posição longitudinal; cada grupo equivale a um eixo e o resultado é limitado a 2–6.
+O modelo antigo de classe única continua disponível como fallback: nesse caso todas as detecções
+seguem para a etapa de rodas. Configure também `wheel_class_id` para o ID da classe `wheel` do
+modelo de rodas.
+
+Como os vídeos do radar já chegam pré-processados e o modelo `axles.onnx` atual não é confiável
+para a lateral deste caminhão, a interface usa `truck_axles_override=7` por padrão. Isso conta o
+único caminhão do job com os 7 eixos físicos informados pela configuração e não desenha falsos
+positivos de eixos. Defina esse campo como `0` quando um detector de rodas válido estiver instalado;
+nesse caso o agrupamento automático será usado.
+
+Para vídeos de radar com movimento rápido, o padrão da interface usa `conf=0.05`: neste conjunto
+o caminhão cai para cerca de `0.325` durante a passagem pela linha e um limiar `0.45` interrompe
+o track antes do crossing.
 
 Sem `--once`, o mesmo comando processa o vídeo até o fim, mostra "EIXOS: N" sobreposto no último
 frame publicado em `/stream`, e o painel `/` mostra estado `finished` com a contagem total — o

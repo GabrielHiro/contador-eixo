@@ -532,15 +532,15 @@ void StreamServer::handleCountPost(int client_fd, const std::string& body) {
     }
     cfg.source = video;
     cfg.axle_enabled = true;
+    cfg.single_vehicle_mode = true;
 
-    const PipelineState previous_state = controller_->status().state;
     controller_->reconfigure(cfg);
     bool started = false;
     for (int i = 0; i < 600; ++i) {
         const auto st = controller_->status();
         if (controller_->config().source == video &&
-            ((st.state == PipelineState::Running && previous_state != PipelineState::Running) ||
-             (st.state == PipelineState::Error && previous_state != PipelineState::Error))) {
+            (st.state == PipelineState::Starting || st.state == PipelineState::Running ||
+             st.state == PipelineState::Error)) {
             started = true;
             break;
         }
@@ -561,6 +561,9 @@ void StreamServer::handleCountPost(int client_fd, const std::string& body) {
                  << st.vehicle_count << ",\"axles\":" << st.axle_count
                  << ",\"frames\":" << st.frames_processed << ",\"state\":\""
                  << toString(st.state) << "\"";
+            if (!cfg.output_path.empty()) {
+                json << ",\"output_video\":\"" << jsonEscape(cfg.output_path) << "\"";
+            }
             if (!st.error_message.empty()) {
                 json << ",\"error\":\"" << jsonEscape(st.error_message) << "\"";
             }

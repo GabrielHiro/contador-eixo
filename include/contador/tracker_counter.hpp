@@ -15,6 +15,8 @@ namespace contador {
 struct CrossingEvent {
     int track_id{-1};
     cv::Rect box;
+    int class_id{0};
+    std::string label{"vehicle"};
 };
 
 class TrackerCounter {
@@ -34,6 +36,7 @@ public:
                std::vector<CrossingEvent>* crossings = nullptr);
 
     int totalCount() const { return total_count_; }
+    void ensureSingleVehicleCounted() { total_count_ = 1; }
     const std::vector<Track>& tracks() const { return tracks_; }
 
     void reset();

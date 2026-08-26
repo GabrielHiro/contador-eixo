@@ -17,5 +17,16 @@
   "axle_conf": 0.35,
   "axle_nms": 0.45,
   "axle_imgsz": 224,
-  "axle_crop_margin": 0.15
+  "axle_crop_margin": 0.15,
+  "vehicle_class_names": "light_vehicle,motorcycle,truck",
+  "vehicle_class_filter": "",
+  "light_vehicle_class_id": 2,
+  "motorcycle_class_id": 3,
+  "truck_class_id": 7,
+  "truck_axles_override": 7,
+  "light_vehicle_axles": 2,
+  "motorcycle_axles": 2,
+  "wheel_class_id": 0,
+  "axle_group_distance": 0.12,
+  "single_vehicle_mode": false
 }

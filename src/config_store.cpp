@@ -158,6 +158,7 @@ std::string jsonEscape(const std::string& s) {
 
 bool loadConfigJson(const std::string& text, PipelineConfig& cfg) {
     loadString(text, "source", cfg.source);
+    loadString(text, "output_path", cfg.output_path);
     loadString(text, "model_path", cfg.model_path);
     loadFloat(text, "conf", cfg.conf);
     loadFloat(text, "nms", cfg.nms);
@@ -180,6 +181,17 @@ bool loadConfigJson(const std::string& text, PipelineConfig& cfg) {
     loadFloat(text, "axle_nms", cfg.axle_nms);
     loadInt(text, "axle_imgsz", cfg.axle_imgsz);
     loadFloat(text, "axle_crop_margin", cfg.axle_crop_margin);
+    loadString(text, "vehicle_class_names", cfg.vehicle_class_names);
+    loadString(text, "vehicle_class_filter", cfg.vehicle_class_filter);
+    loadInt(text, "light_vehicle_class_id", cfg.light_vehicle_class_id);
+    loadInt(text, "motorcycle_class_id", cfg.motorcycle_class_id);
+    loadInt(text, "truck_class_id", cfg.truck_class_id);
+    loadInt(text, "truck_axles_override", cfg.truck_axles_override);
+    loadInt(text, "light_vehicle_axles", cfg.light_vehicle_axles);
+    loadInt(text, "motorcycle_axles", cfg.motorcycle_axles);
+    loadInt(text, "wheel_class_id", cfg.wheel_class_id);
+    loadFloat(text, "axle_group_distance", cfg.axle_group_distance);
+    loadBool(text, "single_vehicle_mode", cfg.single_vehicle_mode);
 
     return true;
 }
@@ -196,6 +208,7 @@ bool saveConfig(const std::string& path, const PipelineConfig& cfg) {
     std::ostringstream json;
     json << "{\n"
          << "  \"source\": \"" << jsonEscape(cfg.source) << "\",\n"
+         << "  \"output_path\": \"" << jsonEscape(cfg.output_path) << "\",\n"
          << "  \"model_path\": \"" << jsonEscape(cfg.model_path) << "\",\n"
          << "  \"conf\": " << cfg.conf << ",\n"
          << "  \"nms\": " << cfg.nms << ",\n"
@@ -213,7 +226,18 @@ bool saveConfig(const std::string& path, const PipelineConfig& cfg) {
          << "  \"axle_conf\": " << cfg.axle_conf << ",\n"
          << "  \"axle_nms\": " << cfg.axle_nms << ",\n"
          << "  \"axle_imgsz\": " << cfg.axle_imgsz << ",\n"
-         << "  \"axle_crop_margin\": " << cfg.axle_crop_margin << "\n"
+         << "  \"axle_crop_margin\": " << cfg.axle_crop_margin << ",\n"
+         << "  \"vehicle_class_names\": \"" << jsonEscape(cfg.vehicle_class_names) << "\",\n"
+         << "  \"vehicle_class_filter\": \"" << jsonEscape(cfg.vehicle_class_filter) << "\",\n"
+         << "  \"light_vehicle_class_id\": " << cfg.light_vehicle_class_id << ",\n"
+         << "  \"motorcycle_class_id\": " << cfg.motorcycle_class_id << ",\n"
+         << "  \"truck_class_id\": " << cfg.truck_class_id << ",\n"
+         << "  \"truck_axles_override\": " << cfg.truck_axles_override << ",\n"
+         << "  \"light_vehicle_axles\": " << cfg.light_vehicle_axles << ",\n"
+         << "  \"motorcycle_axles\": " << cfg.motorcycle_axles << ",\n"
+         << "  \"wheel_class_id\": " << cfg.wheel_class_id << ",\n"
+         << "  \"axle_group_distance\": " << cfg.axle_group_distance << "\n"
+         << "  \"single_vehicle_mode\": " << (cfg.single_vehicle_mode ? "true" : "false") << "\n"
          << "}\n";
 
     std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
