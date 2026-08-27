@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 JOBS = ROOT / "ui_jobs"
 DB_PATH = JOBS / "history.sqlite3"
 BACKEND = os.environ.get("CONTADOR_API", "http://127.0.0.1:8080/api/count")
@@ -288,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
                 while chunk := field.file.read(1024 * 1024):
                     stream.write(chunk)
             try:
-                command = [str(ROOT / "venv/bin/python"), str(ROOT / "image_inference.py"), str(image_path), str(output_path), "--vehicle-model", form.getfirst("vehicle_model") or "models/yolo26s.onnx", "--axle-model", form.getfirst("axle_model") or "models/axles.onnx", "--vehicle-conf", form.getfirst("vehicle_conf") or "0.10", "--axle-conf", form.getfirst("axle_conf") or "0.10"]
+                command = [str(ROOT / "venv/bin/python"), str(ROOT / "app/image_inference.py"), str(image_path), str(output_path), "--vehicle-model", form.getfirst("vehicle_model") or "models/yolo26s.onnx", "--axle-model", form.getfirst("axle_model") or "models/axles.onnx", "--vehicle-conf", form.getfirst("vehicle_conf") or "0.10", "--axle-conf", form.getfirst("axle_conf") or "0.10"]
                 completed = subprocess.run(command, check=True, capture_output=True, text=True, timeout=600)
                 result = json.loads(completed.stdout.strip().splitlines()[-1])
                 self.send_page(image_page(result, f"/media/{output_name}"))

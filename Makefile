@@ -28,12 +28,12 @@ RECONNECT_MS   ?= 5000
 # YOLO-World validator
 VENV           ?= .venv
 VIDEO          ?= video_teste.mp4
-WORLD_MODEL    ?= yolov8s-world.pt
+WORLD_MODEL    ?= models/yolov8s-world.pt
 WORLD_CONF     ?= 0.15
 SAVE_DATASET   ?= 0
 
 # Treino a partir de vídeo (auto-rotulagem local, sem Roboflow)
-VIDEOS         ?= 181327--vv.mp4 181349--vv.mp4
+VIDEOS         ?= data/videos/181327--vv.mp4 data/videos/181349--vv.mp4
 WORLD_SKIP     ?= 4
 VAL_RATIO      ?= 0.15
 EPOCHS         ?= 100
@@ -43,13 +43,13 @@ KAGGLE_WHEELS_DIR ?= datasets/external/vehicle-wheel-detection
 AXLE_IMGSZ     ?= 224
 AXLE_EPOCHS    ?= 50
 VEHICLE_EPOCHS ?= 40
-BASE_WEIGHTS   ?= yolov8n.pt
+BASE_WEIGHTS   ?= models/yolov8n.pt
 PRETRAINED_CACHE ?= models/pretrained_cache
 
 INSTALL_PREFIX ?= /opt/contador-eixo
-SERVICE_FILE   ?= contador-eixo.service
+SERVICE_FILE   ?= deploy/systemd/contador-eixo.service
 
-.PHONY: help ort configure build run count run-ui clean distclean \
+.PHONY: help ort configure build run count run-ui test clean distclean \
         venv-world validate train train-export dataset-from-video train-from-video \
 	fetch-axle-datasets train-axles train-vehicles \
 	download-pretrained download-vehicles download-axles \
@@ -108,7 +108,7 @@ run: build ## Roda o pipeline (SOURCE/MODEL/PORT configuráveis)
 		--conf $(CONF) \
 		--reconnect-ms $(RECONNECT_MS)
 
-count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make count VIDEO=181327--vv.mp4
+count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make count VIDEO=data/videos/181327--vv.mp4
 	@test -f "$(BIN)" || (echo "Compile primeiro: make build"; exit 1)
 	@test -f "$(VIDEO)" || (echo "Vídeo não encontrado: $(VIDEO)"; exit 1)
 	$(BIN) \
@@ -122,7 +122,10 @@ count: build ## Conta eixos em um arquivo de vídeo e sai (--once) — ex: make 
 		--once
 
 run-ui: ## Inicia a interface web cliente da API na porta 8090
-	python3 interface_service.py
+	python3 app/interface_service.py
+
+test: ## Executa smoke tests do build, Python e endpoints ativos
+	bash tests/smoke_test.sh
 
 # ---------------------------------------------------------------------------
 # Python — YOLO-World
@@ -136,22 +139,22 @@ venv-world: ## Cria .venv e instala requirements-yoloworld.txt
 validate: ## Validador Zero-Shot (VIDEO=... WORLD_CONF=... SAVE_DATASET=0|1)
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
 	@test -f "$(VIDEO)" || (echo "Vídeo não encontrado: $(VIDEO)"; exit 1)
-	$(VENV)/bin/python validador_yoloworld.py "$(VIDEO)" \
+	$(VENV)/bin/python tools/validador_yoloworld.py "$(VIDEO)" \
 		--model "$(WORLD_MODEL)" \
 		--conf $(WORLD_CONF) \
 		$(if $(filter 1 true TRUE yes YES,$(SAVE_DATASET)),--save-dataset,)
 
 train: ## Treina YOLOv8n via Roboflow e exporta models/vehicles.onnx (legado: treinar_modelo.py)
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv e instale deps (ultralytics, roboflow)"; exit 1)
-	$(VENV)/bin/python treinar_modelo.py --base-weights "$(BASE_WEIGHTS)"
+	$(VENV)/bin/python tools/treinar_modelo.py --base-weights "$(BASE_WEIGHTS)"
 
 train-export: ## Só reexporta ONNX a partir do best.pt já treinado
 	@test -x "$(VENV)/bin/python" || (echo "Ative o venv primeiro"; exit 1)
-	$(VENV)/bin/python treinar_modelo.py --skip-train
+	$(VENV)/bin/python tools/treinar_modelo.py --skip-train
 
 dataset-from-video: ## Auto-rotula VIDEOS com YOLO-World e gera datasets/wheels_video (sem treinar)
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_do_video.py \
+	$(VENV)/bin/python tools/treinar_do_video.py \
 		--videos $(VIDEOS) \
 		--conf $(WORLD_CONF) \
 		--skip $(WORLD_SKIP) \
@@ -161,7 +164,7 @@ dataset-from-video: ## Auto-rotula VIDEOS com YOLO-World e gera datasets/wheels_
 
 train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_do_video.py \
+	$(VENV)/bin/python tools/treinar_do_video.py \
 		--videos $(VIDEOS) \
 		--conf $(WORLD_CONF) \
 		--skip $(WORLD_SKIP) \
@@ -173,14 +176,14 @@ train-from-video: ## Auto-rotula VIDEOS (YOLO-World) + treina YOLOv8n + exporta 
 
 fetch-axle-datasets: ## Baixa/converte Zenodo + Roboflow eixos (+ Kaggle se existir) sem treinar
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_eixos.py \
+	$(VENV)/bin/python tools/treinar_eixos.py \
 		--only-dataset \
 		--kaggle-dir "$(KAGGLE_WHEELS_DIR)" \
 		$(if $(wildcard $(KAGGLE_WHEELS_DIR)/.),,--skip-kaggle)
 
 train-axles: ## Monta dataset de eixos + treina YOLOv8n + exporta models/axles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_eixos.py \
+	$(VENV)/bin/python tools/treinar_eixos.py \
 		--epochs $(AXLE_EPOCHS) \
 		--imgsz $(AXLE_IMGSZ) \
 		--base-weights "$(BASE_WEIGHTS)" \
@@ -189,7 +192,7 @@ train-axles: ## Monta dataset de eixos + treina YOLOv8n + exporta models/axles.o
 
 train-axles-auto: ## Fluxo automático de eixos com base pré-treinado em cache quando existir
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_eixos.py \
+	$(VENV)/bin/python tools/treinar_eixos.py \
 		--auto \
 		--epochs $(AXLE_EPOCHS) \
 		--imgsz $(AXLE_IMGSZ) \
@@ -198,19 +201,19 @@ train-axles-auto: ## Fluxo automático de eixos com base pré-treinado em cache 
 
 quick-setup: ## Assistente interativo para testar com vídeo local
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python quick_setup.py
+	$(VENV)/bin/python tools/quick_setup.py
 
 train-vehicles: ## Merge Roboflow vehicles + dataset local + treina → models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python treinar_veiculos.py --epochs $(VEHICLE_EPOCHS) --base-weights "$(BASE_WEIGHTS)"
+	$(VENV)/bin/python tools/treinar_veiculos.py --epochs $(VEHICLE_EPOCHS) --base-weights "$(BASE_WEIGHTS)"
 
 download-pretrained: ## Menu interativo de modelos pré-treinados / cache local
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python download_pretrained_models.py --cache-root "$(PRETRAINED_CACHE)"
+	$(VENV)/bin/python tools/download_pretrained_models.py --cache-root "$(PRETRAINED_CACHE)"
 
 download-vehicles: ## Copia o ONNX embarcado de veículos → models/vehicles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python download_pretrained_models.py \
+	$(VENV)/bin/python tools/download_pretrained_models.py \
 		--copy-vehicle-bundled \
 		--cache-root "$(PRETRAINED_CACHE)" \
 		--output models/vehicles.onnx \
@@ -218,7 +221,7 @@ download-vehicles: ## Copia o ONNX embarcado de veículos → models/vehicles.on
 
 download-axles: ## Copia o ONNX embarcado de eixos → models/axles.onnx
 	@test -x "$(VENV)/bin/python" || (echo "Rode: make venv-world"; exit 1)
-	$(VENV)/bin/python download_pretrained_models.py \
+	$(VENV)/bin/python tools/download_pretrained_models.py \
 		--copy-axle-bundled \
 		--cache-root "$(PRETRAINED_CACHE)" \
 		--output models/axles.onnx \
@@ -228,15 +231,15 @@ download-axles: ## Copia o ONNX embarcado de eixos → models/axles.onnx
 # Systemd (Armbian)
 # ---------------------------------------------------------------------------
 install-service: ## Instala contador-eixo.service (sudo)
-	sudo cp $(SERVICE_FILE) /etc/systemd/system/$(SERVICE_FILE)
+	sudo cp $(SERVICE_FILE) /etc/systemd/system/contador-eixo.service
 	sudo systemctl daemon-reload
-	sudo systemctl enable $(SERVICE_FILE)
-	@echo "Edite RTSP/modelo em /etc/systemd/system/$(SERVICE_FILE)"
+	sudo systemctl enable contador-eixo.service
+	@echo "Edite RTSP/modelo em /etc/systemd/system/contador-eixo.service"
 	@echo "Depois: sudo systemctl start contador-eixo"
 
 uninstall-service: ## Remove o serviço systemd (sudo)
 	-sudo systemctl disable --now contador-eixo
-	-sudo rm -f /etc/systemd/system/$(SERVICE_FILE)
+	-sudo rm -f /etc/systemd/system/contador-eixo.service
 	sudo systemctl daemon-reload
 
 status: ## Status do serviço

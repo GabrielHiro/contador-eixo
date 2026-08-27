@@ -120,7 +120,7 @@ constexpr const char* kJsHelpers =
     "document.addEventListener('DOMContentLoaded', installPreview);\n"
     "</script>\n";
 
-const std::string kAttachedVideo = "D2_S20260807075348_E20260807080000.mp4";
+const std::string kAttachedVideo = "data/videos/D2_S20260807075348_E20260807080000.mp4";
 
 struct PresetOption {
     std::string label;
@@ -130,8 +130,8 @@ struct PresetOption {
 std::vector<PresetOption> videoPresets() {
     std::vector<PresetOption> items = {
         {"Synthetic", "synthetic"},
-        {"Vídeo exemplo 181327--vv.mp4", "181327--vv.mp4"},
-        {"Vídeo exemplo 181349--vv.mp4", "181349--vv.mp4"},
+        {"Vídeo exemplo 181327--vv.mp4", "data/videos/181327--vv.mp4"},
+        {"Vídeo exemplo 181349--vv.mp4", "data/videos/181349--vv.mp4"},
     };
     if (std::filesystem::exists(kAttachedVideo)) {
         items.push_back({"Vídeo anexado para teste", kAttachedVideo});

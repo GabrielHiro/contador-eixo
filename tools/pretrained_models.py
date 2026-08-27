@@ -181,7 +181,7 @@ class PreTrainedModelManager:
             candidate = self.cache.entry_dir("weights", model_name) / "best.pt"
             if candidate.is_file():
                 return str(candidate)
-        return "yolov8n.pt"
+        return "models/yolov8n.pt"
 
     def _download_roboflow(self, model_name: str, output_dir: Path) -> Path:
         meta = self._resolve_source("roboflow", model_name)

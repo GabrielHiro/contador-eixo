@@ -1,5 +1,5 @@
 {
-  "source": "videoDiaZoomMegaPixel1636x1220-07082025.mp4",
+  "source": "data/videos/videoDiaZoomMegaPixel1636x1220-07082025.mp4",
   "model_path": "models/vehicles.onnx",
   "conf": 0.1,
   "nms": 0.45,

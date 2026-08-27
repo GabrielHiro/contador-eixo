@@ -31,8 +31,13 @@ dist/
 *.log
 # Vídeos recebidos pela interface local
 /ui_jobs/
+/tests/artifacts/*
+!/tests/artifacts/.gitkeep
 # Artefatos de SO
 .DS_Store
 Thumbs.db
 models/pretrained_cache/*
 *.mp4
+!data/
+!data/videos/
+!data/videos/*.mp4

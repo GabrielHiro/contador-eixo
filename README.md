@@ -135,6 +135,9 @@ duração e uma estimativa da CPU média. A aba `Histórico` salva todos os jobs
 permite reproduzir o vídeo e excluir o registro. Para iniciar manualmente: `make run-ui`.
 Em produção, use `contador-eixo-ui.service` junto com `contador-eixo.service`.
 
+Os testes e fixtures ficam em [tests](tests): execute `make test` para validar sintaxe Python,
+compilação C++ e healthchecks dos serviços ativos. O teste não inicia nem reinicia processos.
+
 Na seção `Configuração da câmera`, escolha `Configuração manual` para criar uma configuração nova
 ou selecione um perfil existente. Informe um nome e use `Salvar configuração da câmera` para
 persisti-lo. O botão `Desenhar área no vídeo` abre o vídeo selecionado em um editor: clique em dois
@@ -172,7 +175,7 @@ Exemplo de **contagem em um arquivo de vídeo** (sem RTSP), com relatório e sa�
 ```bash
 ./build/contador_eixo --source video.mp4 --model models/vehicles.onnx --once
 # ou:
-make count VIDEO=181349--vv.mp4 MODEL=models/vehicles.onnx
+make count VIDEO=data/videos/181349--vv.mp4 MODEL=models/vehicles.onnx
 ```
 
 Para integrar como um serviço no estilo LPR, envie um job para o processo já iniciado. O vídeo
@@ -182,7 +185,7 @@ atual apenas para esse processamento:
 ```bash
 curl -X POST http://127.0.0.1:8080/api/count \
       -H 'Content-Type: application/json' \
-      -d '{"video":"videoDiaZoomMegaPixel1636x1220-07082025.mp4","line_x1":180,"line_y1":160,"line_x2":1100,"line_y2":620,"axle_conf":0.35}'
+      -d '{"video":"data/videos/videoDiaZoomMegaPixel1636x1220-07082025.mp4","line_x1":180,"line_y1":160,"line_x2":1100,"line_y2":620,"axle_conf":0.35}'
 ```
 
 Resposta: `{"video":"...","vehicles":1,"axles":N,"frames":...,"state":"finished"}`.
@@ -231,17 +234,17 @@ frames anotados em `/stream`, e ao chegar ao fim mostra o relatório final no pa
 
 Quando não há dataset rotulado, o fluxo é: **auto-rotulagem zero-shot (YOLO-World) → dataset YOLO
 local → treino YOLOv8n → export ONNX**. Todo o código compartilhado de treino/export/rotulagem vive
-em `mlops_common.py`, usado tanto por `treinar_modelo.py` (dataset Roboflow) quanto por
-`treinar_do_video.py` (dataset gerado localmente a partir de vídeos brutos).
+em `tools/mlops_common.py`, usado tanto por `tools/treinar_modelo.py` (dataset Roboflow) quanto por
+`tools/treinar_do_video.py` (dataset gerado localmente a partir de vídeos brutos).
 
 ```bash
 make venv-world   # cria .venv e instala ultralytics/opencv-python/torch
 
 # Gera só o dataset rotulado (sem treinar) — útil para revisar antes de treinar:
-make dataset-from-video VIDEOS="181327--vv.mp4 181349--vv.mp4"
+make dataset-from-video VIDEOS="data/videos/181327--vv.mp4 data/videos/181349--vv.mp4"
 
 # Rotula + treina YOLOv8n + exporta models/vehicles.onnx:
-make train-from-video VIDEOS="181327--vv.mp4 181349--vv.mp4" EPOCHS=100
+make train-from-video VIDEOS="data/videos/181327--vv.mp4 data/videos/181349--vv.mp4" EPOCHS=100
 ```
 
 Por padrão, `treinar_do_video.py` usa prompts de **roda/eixo** (`car wheel`, `truck wheel`,
@@ -251,13 +254,13 @@ pouco visíveis), os prompts de roda vão gerar poucas ou nenhuma detecção. Ne
 genéricos de veículo, que tendem a funcionar bem em qualquer ângulo:
 
 ```bash
-.venv/bin/python treinar_do_video.py \
-  --videos 181327--vv.mp4 181349--vv.mp4 \
+.venv/bin/python tools/treinar_do_video.py \
+      --videos data/videos/181327--vv.mp4 data/videos/181349--vv.mp4 \
   --prompts car vehicle --class-name vehicle \
   --conf 0.2 --skip 0 --epochs 25 --imgsz 416
 ```
 
-> Os dois vídeos de exemplo deste repositório (`181327--vv.mp4`, `181349--vv.mp4`) são de uma câmera
+> Os dois vídeos de exemplo deste repositório (`data/videos/181327--vv.mp4`, `data/videos/181349--vv.mp4`) são de uma câmera
 > aérea noturna (infravermelho) de um cruzamento/estacionamento — as rodas praticamente não aparecem.
 > Por isso o modelo de exemplo em `models/vehicles.onnx` foi treinado para **contar veículos** (classe
 > `vehicle`) com esses vídeos, não eixos. Para contagem de eixo de verdade, use vídeos com a câmera
@@ -307,7 +310,7 @@ make train-axles KAGGLE_WHEELS_DIR=datasets/external/vehicle-wheel-detection
 
 # Só montar datasets (sem treinar):
 make fetch-axle-datasets
-.venv/bin/python treinar_veiculos.py --only-dataset
+.venv/bin/python tools/treinar_veiculos.py --only-dataset
 ```
 
 Sem `ROBOFLOW_API_KEY`, use `--skip-roboflow` nos scripts (Zenodo e/ou dataset local ainda
@@ -371,7 +374,7 @@ Ou manualmente:
 ```bash
 source .venv/bin/activate
 pip install -r requirements-yoloworld.txt
-python validador_yoloworld.py video_teste.mp4 --conf 0.15
+python tools/validador_yoloworld.py video_teste.mp4 --conf 0.15
 ```
 
 Teclas: `q` sair · `p` pausar/despausar.
@@ -395,7 +398,7 @@ Teclas: `q` sair · `p` pausar/despausar.
 3. Ative o serviço:
 
 ```bash
-sudo cp contador-eixo.service /etc/systemd/system/
+sudo cp deploy/systemd/contador-eixo.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now contador-eixo
 journalctl -u contador-eixo -f
@@ -415,23 +418,16 @@ make logs
 contador-eixo/
 ├── CMakeLists.txt
 ├── Makefile
-├── contador-eixo.service
-├── mlops_common.py          # treino/export YOLOv8→ONNX + download Roboflow + rotulagem
-├── download_pretrained_models.py # CLI standalone para fontes pré-treinadas
-├── pretrained_models.py     # catálogo/cache/validação de fontes pré-treinadas
-├── datasets_axles.py        # conversores Zenodo/Kaggle/Roboflow → YOLO (classe axle)
-├── treinar_modelo.py        # treino a partir de dataset Roboflow (legado)
-├── treinar_do_video.py      # treino 100% local a partir de vídeos brutos (auto-labeling)
-├── treinar_veiculos.py      # merge Roboflow vehicles + vídeo → models/vehicles.onnx
-├── treinar_eixos.py         # Zenodo + Roboflow + Kaggle → models/axles.onnx
-├── validador_yoloworld.py
+├── app/                      # interface web e inferência de imagem
+├── tools/                    # treino, datasets, downloads e validação
+├── deploy/systemd/           # units de produção
 ├── requirements-yoloworld.txt
 ├── include/contador/        # headers
 ├── src/                      # implementação C++
 ├── models/                   # vehicles.onnx + axles.onnx (produção)
 ├── config/                   # settings.json persistido pela tela /config
-├── datasets/wheels_video/    # gerado por treinar_do_video.py (dataset local)
-├── scripts/
+├── datasets/wheels_video/    # gerado por tools/treinar_do_video.py (dataset local)
+├── scripts/                  # utilitários do sistema
 │   └── fetch_onnxruntime.sh
 └── third_party/onnxruntime/   # gerado por `make ort`
 ```

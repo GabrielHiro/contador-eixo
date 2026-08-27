@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch", type=int, default=16)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--device", default="")
-    p.add_argument("--base-weights", default="yolov8n.pt", help="Checkpoint base do YOLO")
+    p.add_argument("--base-weights", default="models/yolov8n.pt", help="Checkpoint base do YOLO")
     p.add_argument(
         "--pretrained-cache",
         type=Path,

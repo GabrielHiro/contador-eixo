@@ -124,7 +124,7 @@ def download_roboflow_dataset(
 def train_yolo(
     data_yaml: Path,
     *,
-    base_weights: str = "yolov8n.pt",
+    base_weights: str = "models/yolov8n.pt",
     epochs: int = 100,
     imgsz: int = 640,
     batch: int = 16,

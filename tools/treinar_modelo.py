@@ -33,7 +33,7 @@ ROBOFLOW_VERSION = 1
 DATASET_DIR = Path("datasets/wheels_roboflow")
 
 # Treino
-BASE_WEIGHTS = "yolov8n.pt"               # nano — leve para edge
+BASE_WEIGHTS = "models/yolov8n.pt"               # nano — leve para edge
 EPOCHS = 100
 IMGSZ = 640
 BATCH = 16                                # reduza (8/4) se faltar VRAM
@@ -151,7 +151,7 @@ def export_onnx(weights: Path, imgsz: int) -> Path:
 
 def main() -> int:
     args = parse_args()
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parent.parent
     # Garante paths relativos à raiz do repo
     import os
 

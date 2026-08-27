@@ -33,8 +33,8 @@ import mlops_common as mlc
 
 DEFAULT_VIDEOS = ["data/videos/181327--vv.mp4", "data/videos/181349--vv.mp4"]
 
-WORLD_MODEL = "yolov8s-world.pt"   # checkpoint YOLO-World p/ auto-rotulagem
-BASE_WEIGHTS = "yolov8n.pt"        # nano — leve para edge
+WORLD_MODEL = "models/yolov8s-world.pt"   # checkpoint YOLO-World p/ auto-rotulagem
+BASE_WEIGHTS = "models/yolov8n.pt"        # nano — leve para edge
 
 DATASET_DIR = Path("datasets/wheels_video")
 PROJECT_RUNS = Path("runs/wheels_video")
@@ -221,7 +221,7 @@ def build_dataset(args: argparse.Namespace) -> Path:
 
 def main() -> int:
     args = parse_args()
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parent.parent
     import os
 
     os.chdir(root)

@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--device", default="")
-    p.add_argument("--base-weights", default="yolov8n.pt", help="Checkpoint base do YOLO")
+    p.add_argument("--base-weights", default="models/yolov8n.pt", help="Checkpoint base do YOLO")
     p.add_argument("--val-ratio", type=float, default=0.15)
     p.add_argument("--onnx-output", type=Path, default=ONNX_OUTPUT)
     return p.parse_args()

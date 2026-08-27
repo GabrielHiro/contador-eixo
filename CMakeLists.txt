@@ -100,7 +100,7 @@ set_target_properties(contador_eixo PROPERTIES
 install(TARGETS contador_eixo RUNTIME DESTINATION bin)
 install(DIRECTORY models/ DESTINATION share/contador_eixo/models)
 install(DIRECTORY config/ DESTINATION share/contador_eixo/config)
-install(FILES contador-eixo.service DESTINATION lib/systemd/system)
+install(FILES deploy/systemd/contador-eixo.service DESTINATION lib/systemd/system)
 
 message(STATUS "---- contador_eixo ${PROJECT_VERSION} ----")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

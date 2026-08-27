@@ -34,9 +34,9 @@ Requisitos detalhados estão no [README.md](README.md).
 
 ### Python
 
-- Scripts de MLOps na raiz (`mlops_common.py`, `treinar_*.py`,
+- Scripts de MLOps em `tools/` (`mlops_common.py`, `treinar_*.py`,
   `validador_yoloworld.py`).
-- Funções compartilhadas de treino/export ficam em `mlops_common.py`.
+- Funções compartilhadas de treino/export ficam em `tools/mlops_common.py`.
 
 ## Commits
 

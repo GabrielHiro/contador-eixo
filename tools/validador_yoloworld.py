@@ -7,7 +7,7 @@ as rodas são detectáveis no ângulo defasado da câmera usando apenas prompts 
 
 Uso:
   python validador_yoloworld.py video_teste.mp4
-  python validador_yoloworld.py video_teste.mp4 --conf 0.12 --model yolov8s-world.pt
+    python validador_yoloworld.py video_teste.mp4 --conf 0.12 --model models/yolov8s-world.pt
   python validador_yoloworld.py video_teste.mp4 --save-dataset
 
 Teclas:
@@ -38,7 +38,7 @@ CLASS_PROMPTS = mlc.WHEEL_CLASS_PROMPTS
 SAVE_DATASET = False
 DATASET_DIR = Path("dataset_yoloworld")
 
-DEFAULT_MODEL = "yolov8s-world.pt"
+DEFAULT_MODEL = "models/yolov8s-world.pt"
 DEFAULT_CONF = 0.15
 WINDOW_NAME = "YOLO-World — Contador de Eixos (validação)"
 

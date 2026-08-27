@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILD_BIN = REPO_ROOT / "build" / "contador_eixo"
 ORT_DIR = REPO_ROOT / "third_party" / "onnxruntime"
 VENV_DIR = REPO_ROOT / ".venv"
